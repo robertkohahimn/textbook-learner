@@ -1,41 +1,23 @@
 // Seed a demo book + lesson with a deck that exercises every slide layout.
 // Dev-only helper for visually checking the slides UI without an LLM call:
 //   node scripts/seed-demo.mjs   (then open the printed URL)
+//
+// The schema is owned by lib/db.ts (a .ts module this plain-node script can't
+// import), so the app must have created the database first.
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 
 const dataDir = process.env.DATA_DIR ?? path.join(process.cwd(), "data");
-mkdirSync(dataDir, { recursive: true });
-const db = new Database(path.join(dataDir, "app.db"));
+const dbPath = path.join(dataDir, "app.db");
+if (!existsSync(dbPath)) {
+  console.error(
+    `No app database at ${dbPath}.\nStart the app once (npm run dev) so it creates the schema, then re-run this script.`
+  );
+  process.exit(1);
+}
+const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
-db.exec(`
-CREATE TABLE IF NOT EXISTS books (
-  id TEXT PRIMARY KEY, title TEXT NOT NULL, author TEXT, filename TEXT NOT NULL,
-  num_pages INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'processing',
-  stage TEXT, error TEXT, accent INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE TABLE IF NOT EXISTS pages (
-  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-  page_number INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY (book_id, page_number)
-);
-CREATE TABLE IF NOT EXISTS modules (
-  id TEXT PRIMARY KEY, book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-  position INTEGER NOT NULL, title TEXT NOT NULL, description TEXT
-);
-CREATE TABLE IF NOT EXISTS lessons (
-  id TEXT PRIMARY KEY, module_id TEXT NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
-  book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-  position INTEGER NOT NULL, title TEXT NOT NULL, summary TEXT,
-  page_start INTEGER NOT NULL, page_end INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending', error TEXT, completed_at TEXT
-);
-CREATE TABLE IF NOT EXISTS materials (
-  lesson_id TEXT PRIMARY KEY REFERENCES lessons(id) ON DELETE CASCADE,
-  slides TEXT NOT NULL, takeaways TEXT NOT NULL, quiz TEXT NOT NULL, slides_meta TEXT
-);
-`);
 
 const bookId = "demo-deck-book-0000-0000-000000000000";
 const moduleId = "demo-deck-mod-0000-0000-000000000000";

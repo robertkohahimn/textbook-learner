@@ -68,7 +68,7 @@ npm test           # unit tests (vitest)
 LIVE=1 npm test    # also run live claude-CLI smoke tests
 npm run build      # production build
 node scripts/e2e.mjs   # browser E2E against a running dev server with a processed book
-node scripts/seed-demo.mjs   # seed a demo lesson with every slide layout (no LLM needed)
+node scripts/seed-demo.mjs   # seed a demo lesson with every slide layout (no LLM; run the app once first)
 node scripts/deck-shots.mjs  # screenshot the slides UI states against a running dev server
 ```
 

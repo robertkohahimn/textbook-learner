@@ -47,7 +47,9 @@ export function Slides({
   );
 
   const present = useCallback(() => {
-    void presentRef.current?.requestFullscreen?.();
+    presentRef.current?.requestFullscreen?.().catch((err: unknown) => {
+      console.warn("Fullscreen unavailable:", err);
+    });
   }, []);
 
   useEffect(() => {
