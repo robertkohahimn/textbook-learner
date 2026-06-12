@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
+import { dataDir } from "../paths";
 import type { LlmOptions, LlmProvider } from "./types";
 
 const TIMEOUT_MS = 5 * 60 * 1000;
@@ -50,9 +49,7 @@ function cliEnv(): NodeJS.ProcessEnv {
 
 function workDir(): string {
   // Neutral cwd so the CLI doesn't pick up this project's CLAUDE.md or skills.
-  const dir = path.join(process.cwd(), "data");
-  mkdirSync(dir, { recursive: true });
-  return dir;
+  return dataDir();
 }
 
 function model(): string {
