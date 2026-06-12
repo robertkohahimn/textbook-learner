@@ -68,6 +68,8 @@ export async function POST(req: Request, { params }: Params) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      // Tell intermediary proxies (Vercel rewrite, nginx) not to buffer the stream.
+      "X-Accel-Buffering": "no",
     },
   });
 }
