@@ -2,6 +2,9 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { dataDir } from "./paths";
+import { normalizeSlide, type DeckMeta, type Slide } from "./deck";
+
+export type { Slide } from "./deck";
 
 export type BookStatus = "processing" | "ready" | "error";
 export type LessonStatus = "pending" | "generating" | "ready" | "error";
@@ -56,10 +59,6 @@ export interface ModuleWithLessons extends ModuleRow {
   lessons: LessonRow[];
 }
 
-export interface Slide {
-  title: string;
-  bullets: string[];
-}
 export interface Takeaway {
   point: string;
   detail: string;
@@ -165,9 +164,17 @@ export function getDb(): Database.Database {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     db.exec(SCHEMA);
+    migrate(db);
     globalThis.__tblDb = db;
   }
   return globalThis.__tblDb;
+}
+
+function migrate(db: Database.Database): void {
+  const cols = db.pragma("table_info(materials)") as { name: string }[];
+  if (!cols.some((c) => c.name === "slides_meta")) {
+    db.exec(`ALTER TABLE materials ADD COLUMN slides_meta TEXT`);
+  }
 }
 
 export function newId(): string {
@@ -251,6 +258,16 @@ export function getPagesText(bookId: string, start: number, end: number): string
   return rows.map((r) => r.text).join("\n\n");
 }
 
+/** Lesson text with [p.N] markers so generated slides can cite their source pages. */
+export function getPagesMarked(bookId: string, start: number, end: number): string {
+  const rows = getDb()
+    .prepare(
+      `SELECT page_number, text FROM pages WHERE book_id = ? AND page_number BETWEEN ? AND ? ORDER BY page_number`
+    )
+    .all(bookId, start, end) as { page_number: number; text: string }[];
+  return rows.map((r) => `[p.${r.page_number}]\n${r.text}`).join("\n\n");
+}
+
 // --- curriculum ---
 
 export function insertCurriculum(bookId: string, modules: CurriculumInput[]): void {
@@ -325,17 +342,29 @@ export function setLessonCompleted(id: string, completed: boolean): void {
 
 // --- materials ---
 
-export function saveMaterials(lessonId: string, materials: LessonMaterials): void {
+export function saveMaterials(
+  lessonId: string,
+  materials: LessonMaterials,
+  deckMeta?: DeckMeta
+): void {
   getDb()
     .prepare(
-      `INSERT OR REPLACE INTO materials (lesson_id, slides, takeaways, quiz) VALUES (?, ?, ?, ?)`
+      `INSERT OR REPLACE INTO materials (lesson_id, slides, takeaways, quiz, slides_meta) VALUES (?, ?, ?, ?, ?)`
     )
     .run(
       lessonId,
       JSON.stringify(materials.slides),
       JSON.stringify(materials.takeaways),
-      JSON.stringify(materials.quiz)
+      JSON.stringify(materials.quiz),
+      deckMeta ? JSON.stringify(deckMeta) : null
     );
+}
+
+/** Replace just the slide deck (regeneration or a single-slide revision). */
+export function saveDeck(lessonId: string, slides: Slide[], deckMeta: DeckMeta): void {
+  getDb()
+    .prepare(`UPDATE materials SET slides = ?, slides_meta = ? WHERE lesson_id = ?`)
+    .run(JSON.stringify(slides), JSON.stringify(deckMeta), lessonId);
 }
 
 export function getMaterials(lessonId: string): LessonMaterials | undefined {
@@ -344,10 +373,23 @@ export function getMaterials(lessonId: string): LessonMaterials | undefined {
     .get(lessonId) as { slides: string; takeaways: string; quiz: string } | undefined;
   if (!row) return undefined;
   return {
-    slides: JSON.parse(row.slides),
+    // Normalizing on read keeps decks saved before layouts existed rendering fine.
+    slides: (JSON.parse(row.slides) as unknown[]).map(normalizeSlide),
     takeaways: JSON.parse(row.takeaways),
     quiz: JSON.parse(row.quiz),
   };
+}
+
+export function getDeckMeta(lessonId: string): DeckMeta | null {
+  const row = getDb()
+    .prepare(`SELECT slides_meta FROM materials WHERE lesson_id = ?`)
+    .get(lessonId) as { slides_meta: string | null } | undefined;
+  if (!row?.slides_meta) return null;
+  try {
+    return JSON.parse(row.slides_meta) as DeckMeta;
+  } catch {
+    return null;
+  }
 }
 
 // --- quiz attempts ---

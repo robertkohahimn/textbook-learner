@@ -4,8 +4,33 @@ import { starterQuestions } from "@/lib/tutor";
 
 const valid = {
   slides: [
-    { title: "What is spin?", bullets: ["A quantum property", "Binary outcomes"] },
-    { title: "Measuring spin", bullets: ["Apparatus orientation matters"] },
+    {
+      layout: "title",
+      title: "The Strange Logic of Spin",
+      subtitle: "Why one experiment broke classical physics",
+      notes: "Welcome — today we look at spin.",
+      pages: [12],
+    },
+    {
+      layout: "bullets",
+      title: "What is spin?",
+      bullets: ["A quantum property", "Binary outcomes"],
+      notes: "Spin is not literal rotation.",
+      pages: [12, 13],
+    },
+    {
+      layout: "bullets",
+      title: "Measuring spin",
+      bullets: ["Apparatus orientation matters"],
+      notes: "",
+      pages: [14],
+    },
+    {
+      layout: "recap",
+      title: "Remember this",
+      bullets: ["Spin is quantized", "Measurement disturbs"],
+      notes: "Recap before the quiz.",
+    },
   ],
   takeaways: [
     { point: "Spin is quantized", detail: "Only two outcomes ever observed." },
@@ -37,7 +62,9 @@ const valid = {
 describe("validateMaterials", () => {
   it("accepts valid materials", () => {
     const m = validateMaterials(valid);
-    expect(m.slides).toHaveLength(2);
+    expect(m.slides).toHaveLength(4);
+    expect(m.slides[0].layout).toBe("title");
+    expect(m.slides[1].pages).toEqual([12, 13]);
     expect(m.quiz[0].answerIndex).toBe(1);
   });
 
@@ -45,10 +72,21 @@ describe("validateMaterials", () => {
     expect(() => validateMaterials({ ...valid, slides: [] })).toThrow();
   });
 
-  it("rejects slides without bullets", () => {
-    expect(() =>
-      validateMaterials({ ...valid, slides: [{ title: "T", bullets: [] }] })
-    ).toThrow();
+  it("rejects slides without a layout", () => {
+    const bad = structuredClone(valid);
+    bad.slides[1] = { title: "T", bullets: ["a"] } as (typeof bad.slides)[number];
+    expect(() => validateMaterials(bad)).toThrow(/layout/);
+  });
+
+  it("rejects bullet slides without bullets", () => {
+    const bad = structuredClone(valid);
+    bad.slides[1] = {
+      layout: "bullets",
+      title: "T",
+      bullets: [],
+      notes: "",
+    } as (typeof bad.slides)[number];
+    expect(() => validateMaterials(bad)).toThrow();
   });
 
   it("rejects too few takeaways", () => {

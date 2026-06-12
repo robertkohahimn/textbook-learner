@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LessonMaterials, LessonRow, QuizAttemptRow } from "@/lib/db";
+import type { DeckMeta } from "@/lib/deck";
 import { usePoll } from "./use-poll";
 import { Wordmark } from "./bits";
 import { Slides } from "./slides";
@@ -13,6 +14,7 @@ import { Tutor } from "./tutor";
 interface LessonResponse {
   lesson: LessonRow;
   materials: LessonMaterials | null;
+  deckMeta: DeckMeta | null;
   attempts: QuizAttemptRow[];
   book: { id: string; title: string; accent: number } | null;
   moduleTitle: string | null;
@@ -159,7 +161,15 @@ export function Lesson({ lessonId }: { lessonId: string }) {
           </nav>
 
           <section className="mt-8 max-w-3xl pb-24">
-            {tab === "slides" && <Slides slides={data.materials!.slides} />}
+            {tab === "slides" && (
+              <Slides
+                lessonId={lessonId}
+                slides={data.materials!.slides}
+                deckMeta={data.deckMeta}
+                lessonTitle={lesson.title}
+                onDeckChange={() => void refresh()}
+              />
+            )}
             {tab === "takeaways" && (
               <Takeaways takeaways={data.materials!.takeaways} />
             )}
