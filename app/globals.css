@@ -1,0 +1,217 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f4eee1;
+  --paper-raised: #fbf7ec;
+  --paper-deep: #ece4d2;
+  --ink: #231d12;
+  --ink-soft: #6b6051;
+  --ink-faint: #998d7a;
+  --line: rgba(35, 29, 18, 0.16);
+  --line-soft: rgba(35, 29, 18, 0.08);
+  --good: #2f6b46;
+  --bad: #a13434;
+  --accent: #36436e;
+  --accent-ink: #ffffff;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-deep: var(--paper-deep);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-instrument);
+  --font-mono: var(--font-spline-mono);
+}
+
+/* Book-cloth accents, seeded per book. */
+.accent-0 { --accent: #7c2f2f; }
+.accent-1 { --accent: #2f5d3e; }
+.accent-2 { --accent: #36436e; }
+.accent-3 { --accent: #8a5a14; }
+.accent-4 { --accent: #2c5f5d; }
+.accent-5 { --accent: #5d3b5e; }
+
+html {
+  background: var(--paper);
+}
+
+body {
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 252, 243, 0.9), rgba(255, 252, 243, 0) 60%),
+    var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), sans-serif;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Paper grain over everything. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* --- motion --- */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+@keyframes sheen {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.rise {
+  animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fade {
+  animation: fade 0.4s ease both;
+}
+
+.slide-in {
+  animation: slide-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.working-sheen {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: sheen 2.2s linear infinite;
+}
+
+.caret::after {
+  content: "▍";
+  margin-left: 1px;
+  color: var(--accent);
+  animation: blink 0.9s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .fade, .slide-in, .pulse-dot, .working-sheen {
+    animation: none;
+  }
+}
+
+/* --- clothbound book cover --- */
+
+.book-cover {
+  position: relative;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(0, 0, 0, 0.12)),
+    var(--accent);
+  color: var(--accent-ink);
+  border-radius: 4px 10px 10px 4px;
+  box-shadow:
+    inset 6px 0 8px -6px rgba(0, 0, 0, 0.55),
+    inset -2px 0 4px -2px rgba(255, 255, 255, 0.25),
+    0 14px 28px -14px rgba(35, 29, 18, 0.55);
+}
+
+.book-cover::before {
+  /* spine groove */
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 9px;
+  width: 1.5px;
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.18);
+}
+
+.book-cover::after {
+  /* cloth weave */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.16;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* --- prose for tutor markdown --- */
+
+.tutor-prose p { margin: 0.45em 0; }
+.tutor-prose p:first-child { margin-top: 0; }
+.tutor-prose p:last-child { margin-bottom: 0; }
+.tutor-prose strong { font-weight: 650; }
+.tutor-prose ul, .tutor-prose ol { margin: 0.45em 0; padding-left: 1.25em; }
+.tutor-prose ul { list-style: disc; }
+.tutor-prose ol { list-style: decimal; }
+.tutor-prose li { margin: 0.2em 0; }
+.tutor-prose code {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.86em;
+  background: var(--paper-deep);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.tutor-prose pre {
+  background: var(--paper-deep);
+  padding: 0.7em 0.9em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.55em 0;
+}
+.tutor-prose pre code { background: none; padding: 0; }
+.tutor-prose h1, .tutor-prose h2, .tutor-prose h3 {
+  font-weight: 650;
+  margin: 0.7em 0 0.3em;
+}
+.tutor-prose blockquote {
+  border-left: 2px solid var(--accent);
+  padding-left: 0.8em;
+  color: var(--ink-soft);
+  margin: 0.5em 0;
+}
