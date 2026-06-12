@@ -143,6 +143,49 @@ body::after {
   }
 }
 
+/* --- slide deck --- */
+
+/* cqw units inside scale typography with the stage, so the same slide
+   renders correctly inline, as a grid thumbnail, fullscreen, and in print. */
+.slide-stage {
+  container-type: inline-size;
+}
+
+/* Present mode: the fullscreen element fills the screen in paper, not black. */
+:fullscreen {
+  background: var(--paper);
+}
+
+@media print {
+  @page {
+    size: letter landscape;
+    margin: 0.45in;
+  }
+  body {
+    background: white;
+  }
+  body::after {
+    display: none;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-deck,
+  .print-deck * {
+    visibility: visible;
+  }
+  .print-deck {
+    display: block;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+  }
+  .print-deck .slide-stage {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}
+
 /* --- clothbound book cover --- */
 
 .book-cover {

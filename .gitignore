@@ -23,6 +23,9 @@
 # app data (uploads + sqlite)
 /data/
 
+# local screenshots from e2e/visual scripts
+/e2e-shots/
+
 # misc
 .DS_Store
 *.pem

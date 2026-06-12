@@ -26,6 +26,7 @@ export async function GET(_req: Request, { params }: Params) {
   return NextResponse.json({
     lesson: db.getLesson(lessonId),
     materials: db.getMaterials(lessonId) ?? null,
+    deckMeta: db.getDeckMeta(lessonId),
     attempts: db.getQuizAttempts(lessonId),
     book: book ? { id: book.id, title: book.title, accent: book.accent } : null,
     moduleTitle: moduleRow?.title ?? null,

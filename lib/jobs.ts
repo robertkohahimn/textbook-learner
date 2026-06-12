@@ -3,6 +3,7 @@ import path from "node:path";
 import * as db from "./db";
 import { extractBook } from "./pdf";
 import { generateCurriculum } from "./curriculum";
+import { DEFAULT_DECK_OPTIONS } from "./deck";
 import { generateMaterials } from "./materials";
 import { uploadsDir } from "./paths";
 
@@ -26,13 +27,29 @@ function state(): JobState {
   return globalThis.__tblJobs;
 }
 
-function enqueue(job: Job, priority = false): void {
+function enqueue(job: Job, priority = false): boolean {
   const s = state();
-  if (s.keys.has(job.key)) return;
+  if (s.keys.has(job.key)) return false;
   s.keys.add(job.key);
   if (priority) s.queue.unshift(job);
   else s.queue.push(job);
   void drain();
+  return true;
+}
+
+/**
+ * Run a user-triggered LLM task through the same serial queue as background
+ * jobs (one LLM call at a time) and resolve with its result. Rejects
+ * immediately if the same task is already queued or running.
+ */
+export function runExclusive<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const accepted = enqueue(
+      { key, run: () => fn().then(resolve, reject) },
+      true
+    );
+    if (!accepted) reject(new Error("BUSY"));
+  });
 }
 
 async function drain(): Promise<void> {
@@ -114,12 +131,15 @@ async function generateLesson(lessonId: string): Promise<void> {
   if (!lesson || (lesson.status !== "pending" && lesson.status !== "error")) return;
   db.updateLessonStatus(lessonId, "generating");
   try {
-    const text = db.getPagesText(lesson.book_id, lesson.page_start, lesson.page_end);
+    const text = db.getPagesMarked(lesson.book_id, lesson.page_start, lesson.page_end);
     const materials = await generateMaterials(
       { title: lesson.title, summary: lesson.summary },
       text
     );
-    db.saveMaterials(lessonId, materials);
+    db.saveMaterials(lessonId, materials, {
+      ...DEFAULT_DECK_OPTIONS,
+      generatedAt: new Date().toISOString(),
+    });
     db.updateLessonStatus(lessonId, "ready");
   } catch (err) {
     db.updateLessonStatus(lessonId, "error", (err as Error).message);

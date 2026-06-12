@@ -1,4 +1,5 @@
-import type { LessonMaterials, QuizQuestion, Slide, Takeaway } from "./db";
+import type { LessonMaterials, QuizQuestion, Takeaway } from "./db";
+import { DEFAULT_DECK_OPTIONS, deckSpec, validateDeck, type Slide } from "./deck";
 import { extractJson } from "./json";
 import { getLlm } from "./llm";
 
@@ -12,20 +13,7 @@ export function validateMaterials(data: unknown): LessonMaterials {
   if (typeof data !== "object" || data === null) fail("expected an object");
   const root = data as Record<string, unknown>;
 
-  const slides = root.slides;
-  if (!Array.isArray(slides) || slides.length === 0) fail("slides must be non-empty");
-  const validSlides: Slide[] = slides.map((s) => {
-    const slide = s as Record<string, unknown>;
-    if (typeof slide.title !== "string" || slide.title.trim() === "")
-      fail("slide title missing");
-    if (
-      !Array.isArray(slide.bullets) ||
-      slide.bullets.length === 0 ||
-      !slide.bullets.every((b) => typeof b === "string")
-    )
-      fail("slide bullets must be a non-empty string array");
-    return { title: slide.title.trim(), bullets: slide.bullets as string[] };
-  });
+  const validSlides: Slide[] = validateDeck(root.slides);
 
   const takeaways = root.takeaways;
   if (!Array.isArray(takeaways) || takeaways.length < 3)
@@ -82,24 +70,25 @@ export function buildMaterialsPrompt(
       ? lessonText.slice(0, MAX_LESSON_CHARS) + "\n[...truncated]"
       : lessonText;
 
-  return `You are an expert teacher preparing study materials for one lesson.
+  return `You are an expert teacher and presentation designer preparing study materials for one lesson.
 
 LESSON: "${lesson.title}"${lesson.summary ? ` — ${lesson.summary}` : ""}
 
-SOURCE TEXT (from the book, this lesson's pages):
+SOURCE TEXT (from the book, this lesson's pages, with [p.N] page markers):
 ---
 ${text}
 ---
 
 Create study materials grounded ONLY in the source text above.
 
-1. slides: 6 to 10 presentation slides that teach the lesson step by step. Each slide has a short punchy title and 2 to 4 bullets (each bullet one clear sentence, plain text).
+1. slides: a presentation deck. ${deckSpec(DEFAULT_DECK_OPTIONS)}
+
 2. takeaways: 4 to 7 key takeaways. Each has "point" (one bold-able phrase) and "detail" (1-2 sentences of explanation).
 3. quiz: exactly 5 multiple-choice questions testing understanding (not trivia). Each has 4 plausible choices, the 0-based "answerIndex" of the correct one, and a 1-2 sentence "explanation" of why it is correct.
 
 Output ONLY this JSON, no other text:
 {
-  "slides": [ { "title": "...", "bullets": ["...", "..."] } ],
+  "slides": [ { "layout": "title", "title": "...", "subtitle": "...", "notes": "...", "pages": [1] } ],
   "takeaways": [ { "point": "...", "detail": "..." } ],
   "quiz": [ { "question": "...", "choices": ["...", "...", "...", "..."], "answerIndex": 0, "explanation": "..." } ]
 }`;

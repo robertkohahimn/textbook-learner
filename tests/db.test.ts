@@ -30,6 +30,49 @@ describe("db", () => {
     db.insertBook({ id, title: "Pages", author: null, filename: "p.pdf" });
     db.insertPages(id, ["one", "two", "three", "four"]);
     expect(db.getPagesText(id, 2, 3)).toBe("two\n\nthree");
+    expect(db.getPagesMarked(id, 2, 3)).toBe("[p.2]\ntwo\n\n[p.3]\nthree");
+  });
+
+  it("upgrades legacy slides on read and swaps decks in place", () => {
+    const id = db.newId();
+    db.insertBook({ id, title: "Legacy", author: null, filename: "l.pdf" });
+    db.insertCurriculum(id, [
+      {
+        title: "M1",
+        description: "",
+        lessons: [{ title: "L", summary: "", pageStart: 1, pageEnd: 2 }],
+      },
+    ]);
+    const lessonId = db.getCurriculum(id)[0].lessons[0].id;
+
+    // A row written before deck layouts existed.
+    db.saveMaterials(lessonId, {
+      slides: [{ title: "Old", bullets: ["a"] } as never],
+      takeaways: [{ point: "p", detail: "d" }],
+      quiz: [{ question: "q?", choices: ["a", "b"], answerIndex: 0, explanation: "" }],
+    });
+    expect(db.getDeckMeta(lessonId)).toBeNull();
+    expect(db.getMaterials(lessonId)?.slides[0]).toEqual({
+      layout: "bullets",
+      title: "Old",
+      bullets: ["a"],
+      notes: "",
+    });
+
+    const meta = {
+      format: "detailed" as const,
+      length: "short" as const,
+      focus: "for kids",
+      generatedAt: "2026-06-12T00:00:00.000Z",
+    };
+    db.saveDeck(
+      lessonId,
+      [{ layout: "section", title: "New deck", notes: "n" }],
+      meta
+    );
+    expect(db.getMaterials(lessonId)?.slides[0].title).toBe("New deck");
+    expect(db.getMaterials(lessonId)?.takeaways).toHaveLength(1);
+    expect(db.getDeckMeta(lessonId)).toEqual(meta);
   });
 
   it("inserts a curriculum transactionally and reads it back", () => {
@@ -81,14 +124,21 @@ describe("db", () => {
     const lessonId = db.getCurriculum(id)[0].lessons[0].id;
 
     const materials = {
-      slides: [{ title: "S", bullets: ["b1"] }],
+      slides: [
+        { layout: "bullets" as const, title: "S", bullets: ["b1"], notes: "say this" },
+      ],
       takeaways: [{ point: "p", detail: "d" }],
       quiz: [
         { question: "q?", choices: ["a", "b", "c", "d"], answerIndex: 2, explanation: "e" },
       ],
     };
-    db.saveMaterials(lessonId, materials);
+    db.saveMaterials(lessonId, materials, {
+      format: "presenter",
+      length: "default",
+      generatedAt: "2026-06-12T00:00:00.000Z",
+    });
     expect(db.getMaterials(lessonId)).toEqual(materials);
+    expect(db.getDeckMeta(lessonId)?.format).toBe("presenter");
 
     db.insertQuizAttempt(lessonId, 1, 1, [2]);
     expect(db.getQuizAttempts(lessonId)[0]).toMatchObject({ score: 1, total: 1 });

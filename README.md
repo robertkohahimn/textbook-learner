@@ -25,6 +25,23 @@ What happens next: Folio extracts every page, designs a curriculum (about a
 minute), then pre-generates lesson materials in the background, in order.
 Opening a lesson that isn't ready yet jumps it to the front of the queue.
 
+## Slide decks
+
+Every lesson gets a full slide deck, not just bullet lists:
+
+- **Eight layouts** — title, section divider, bullets, two-column comparison,
+  verbatim quote, big fact, process/steps, and recap — arranged in a narrative
+  arc from hook to recap.
+- **Speaker notes** on every slide (`N` to toggle) and **page citations** back
+  to the exact book pages each slide draws from.
+- **Customize & regenerate** — presenter vs. detailed format, short/standard/
+  in-depth length, and a free-form focus prompt ("explain it for a
+  12-year-old", "go deep on the math").
+- **Revise one slide** with an instruction; the revision stays grounded in the
+  lesson's source pages.
+- **Present mode** (`F`), **overview grid** (`G`), arrow-key navigation.
+- **Export** to PowerPoint (editable text + speaker notes) or print-to-PDF.
+
 ## Environment variables
 
 | Variable            | Default            | Purpose                                          |
@@ -51,6 +68,8 @@ npm test           # unit tests (vitest)
 LIVE=1 npm test    # also run live claude-CLI smoke tests
 npm run build      # production build
 node scripts/e2e.mjs   # browser E2E against a running dev server with a processed book
+node scripts/seed-demo.mjs   # seed a demo lesson with every slide layout (no LLM needed)
+node scripts/deck-shots.mjs  # screenshot the slides UI states against a running dev server
 ```
 
 Notes:
