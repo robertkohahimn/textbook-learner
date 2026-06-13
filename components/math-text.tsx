@@ -10,9 +10,10 @@ import { splitMath } from "@/lib/math";
 export function MathText({ children }: { children: string }) {
   const segments = splitMath(children);
 
-  // Fast path: no math, no extra DOM.
+  // Fast path: no math, no extra DOM. Use the segment value, not children, so
+  // an escaped "\$" in plain prose still normalizes to "$".
   if (segments.length === 1 && segments[0].type === "text") {
-    return <>{children}</>;
+    return <>{segments[0].value}</>;
   }
 
   return (

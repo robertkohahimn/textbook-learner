@@ -37,7 +37,7 @@ Every lesson gets a full slide deck, not just bullet lists:
 - **Typeset math** — the model writes notation in LaTeX (`$...$` / `$$...$$`)
   and it renders with KaTeX across slides, takeaways, quiz, and the tutor.
   Web and PDF are pixel-perfect; the PPTX export approximates math in editable
-  Unicode (α, ⟨ψ\|, ², ⊗ …).
+  Unicode (α, ⟨ψ|, ², ⊗ …).
 - **Customize & regenerate** — presenter vs. detailed format, short/standard/
   in-depth length, and a free-form focus prompt ("explain it for a
   12-year-old", "go deep on the math").

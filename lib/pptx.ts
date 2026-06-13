@@ -17,6 +17,7 @@ function toUnicodeSlide(slide: Slide): Slide {
     ...slide,
     title: u(slide.title),
     subtitle: slide.subtitle ? u(slide.subtitle) : slide.subtitle,
+    notes: u(slide.notes),
     bullets: slide.bullets?.map(u),
     columns: slide.columns?.map((c) => ({
       heading: u(c.heading),
@@ -105,7 +106,7 @@ export async function exportDeckPptx(slides: Slide[], info: PptxDeckInfo) {
       fontFace: BODY_FONT,
       color: INK_FAINT,
     });
-    if (slide.notes) s.addNotes(u(slide.notes));
+    if (slide.notes) s.addNotes(slide.notes);
   });
 
   const fileName = `${info.lessonTitle.replace(/[^\w\d -]+/g, "").trim() || "deck"}.pptx`;
