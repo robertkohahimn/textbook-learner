@@ -8,6 +8,8 @@
  * the LLM-calling halves live in deck-generate.ts.
  */
 
+import { MATH_INSTRUCTION } from "./math";
+
 export type SlideLayout =
   | "title"
   | "section"
@@ -295,6 +297,8 @@ Every slide MUST include:
 - "notes": speaker notes — 2 to 4 conversational sentences a presenter would actually SAY over this slide, adding context, examples, or transitions beyond what is written on it.
 - "pages": the source page numbers this slide draws from, taken from the [p.N] markers in the source text (e.g. [12, 13]).
 
+${MATH_INSTRUCTION}
+
 ${formatRules(options.format)}${
     options.focus
       ? `\n\nAUDIENCE & FOCUS (from the learner — honor this throughout):\n${options.focus}`
@@ -367,6 +371,8 @@ Rewrite this one slide following the instruction. You may change its layout if t
 - "process": { "layout": "process", "title", "steps": [{ "label", "detail" }, ... 2-6 steps], "notes", "pages" }
 
 Keep "notes" (speaker notes, 2-4 spoken sentences) and "pages" (source page numbers from the [p.N] markers) accurate for the revised content.
+
+${MATH_INSTRUCTION}
 
 Output ONLY the revised slide as a single JSON object, no other text.`;
 }

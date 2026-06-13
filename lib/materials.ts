@@ -1,5 +1,6 @@
 import type { LessonMaterials, QuizQuestion, Takeaway } from "./db";
 import { DEFAULT_DECK_OPTIONS, deckSpec, validateDeck, type Slide } from "./deck";
+import { MATH_INSTRUCTION } from "./math";
 import { extractJson } from "./json";
 import { getLlm } from "./llm";
 
@@ -80,6 +81,8 @@ ${text}
 ---
 
 Create study materials grounded ONLY in the source text above.
+
+${MATH_INSTRUCTION} This applies to slides, takeaways, and quiz alike.
 
 1. slides: a presentation deck. ${deckSpec(DEFAULT_DECK_OPTIONS)}
 

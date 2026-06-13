@@ -9,6 +9,7 @@ import {
   type Slide,
 } from "@/lib/deck";
 import { WorkingDot } from "./bits";
+import { MathText } from "./math-text";
 
 export function Slides({
   lessonId,
@@ -203,7 +204,7 @@ export function Slides({
                 </NavButton>
                 {showNotes && slide.notes ? (
                   <p className="mx-6 max-w-3xl text-center text-sm leading-relaxed text-ink-soft">
-                    {slide.notes}
+                    <MathText>{slide.notes}</MathText>
                   </p>
                 ) : (
                   <span className="font-mono text-xs text-ink-faint">
@@ -249,7 +250,7 @@ export function Slides({
                 Speaker notes
               </p>
               <p className="mt-2 leading-relaxed text-ink-soft">
-                {slide.notes || "No notes for this slide."}
+                <MathText>{slide.notes || "No notes for this slide."}</MathText>
               </p>
             </div>
           )}
@@ -290,7 +291,7 @@ export function Slides({
             {s.notes && (
               <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                 <span className="font-mono text-xs text-ink-faint">Notes · </span>
-                {s.notes}
+                <MathText>{s.notes}</MathText>
               </p>
             )}
           </div>
@@ -347,11 +348,11 @@ function SlideBody({ slide }: { slide: Slide }) {
       return (
         <div className="flex flex-1 flex-col items-center justify-center px-[8cqw] text-center">
           <h2 className="font-display text-[5.6cqw] font-medium leading-[1.12] text-balance">
-            {slide.title}
+            <MathText>{slide.title}</MathText>
           </h2>
           {slide.subtitle && (
             <p className="mt-[2.4cqw] max-w-[70cqw] text-[2.4cqw] leading-snug text-ink-soft">
-              {slide.subtitle}
+              <MathText>{slide.subtitle}</MathText>
             </p>
           )}
         </div>
@@ -363,11 +364,11 @@ function SlideBody({ slide }: { slide: Slide }) {
             Section
           </p>
           <h2 className="mt-[1.6cqw] font-display text-[5cqw] font-medium leading-[1.12] text-balance">
-            {slide.title}
+            <MathText>{slide.title}</MathText>
           </h2>
           {slide.subtitle && (
             <p className="mt-[1.8cqw] max-w-[64cqw] text-[2.2cqw] leading-snug text-ink-soft">
-              {slide.subtitle}
+              <MathText>{slide.subtitle}</MathText>
             </p>
           )}
         </div>
@@ -384,7 +385,7 @@ function SlideBody({ slide }: { slide: Slide }) {
             {slide.columns?.map((col, ci) => (
               <div key={ci}>
                 <h3 className="border-b border-line pb-[1cqw] text-[2.1cqw] font-semibold text-accent">
-                  {col.heading}
+                  <MathText>{col.heading}</MathText>
                 </h3>
                 <ul className="mt-[1.6cqw] space-y-[1.3cqw]">
                   {col.bullets.map((b, bi) => (
@@ -393,7 +394,7 @@ function SlideBody({ slide }: { slide: Slide }) {
                         aria-hidden
                         className="mt-[0.85cqw] size-[0.7cqw] shrink-0 rounded-full bg-accent"
                       />
-                      <span>{b}</span>
+                      <span><MathText>{b}</MathText></span>
                     </li>
                   ))}
                 </ul>
@@ -410,11 +411,11 @@ function SlideBody({ slide }: { slide: Slide }) {
               “
             </span>
             <blockquote className="-mt-[2cqw] max-w-[64cqw] font-display text-[3.1cqw] italic leading-[1.3] text-balance">
-              {slide.quote?.text}
+              <MathText>{slide.quote?.text ?? ""}</MathText>
             </blockquote>
             {slide.quote?.attribution && (
               <p className="mt-[2cqw] text-[1.9cqw] text-ink-soft">
-                — {slide.quote.attribution}
+                — <MathText>{slide.quote.attribution}</MathText>
               </p>
             )}
           </div>
@@ -425,10 +426,10 @@ function SlideBody({ slide }: { slide: Slide }) {
         <ContentFrame title={slide.title}>
           <div className="flex flex-1 flex-col items-center justify-center text-center">
             <p className="font-display text-[10cqw] font-medium leading-none text-accent">
-              {slide.fact?.value}
+              <MathText>{slide.fact?.value ?? ""}</MathText>
             </p>
             <p className="mt-[2cqw] max-w-[58cqw] text-[2.3cqw] leading-snug text-ink-soft">
-              {slide.fact?.label}
+              <MathText>{slide.fact?.label ?? ""}</MathText>
             </p>
           </div>
         </ContentFrame>
@@ -444,11 +445,11 @@ function SlideBody({ slide }: { slide: Slide }) {
                 </span>
                 <div className="min-w-0">
                   <p className="text-[2.1cqw] font-semibold leading-[1.35]">
-                    {step.label}
+                    <MathText>{step.label}</MathText>
                   </p>
                   {step.detail && (
                     <p className="text-[1.85cqw] leading-snug text-ink-soft">
-                      {step.detail}
+                      <MathText>{step.detail}</MathText>
                     </p>
                   )}
                 </div>
@@ -475,7 +476,7 @@ function SlideBody({ slide }: { slide: Slide }) {
                 >
                   {slide.layout === "recap" ? String(bi + 1).padStart(2, "0") : ""}
                 </span>
-                <span>{bullet}</span>
+                <span><MathText>{bullet}</MathText></span>
               </li>
             ))}
           </ul>
@@ -494,7 +495,7 @@ function ContentFrame({
   return (
     <div className="flex flex-1 flex-col px-[6cqw] pt-[5cqw] pb-[7cqw]">
       <h2 className="font-display text-[3.4cqw] font-medium leading-[1.15] text-balance">
-        {title}
+        <MathText>{title}</MathText>
       </h2>
       <div className="mt-[2.6cqw] flex flex-1 flex-col">{children}</div>
     </div>

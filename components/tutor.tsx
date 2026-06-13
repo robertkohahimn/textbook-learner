@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 interface Message {
   role: "user" | "assistant";
@@ -232,7 +234,12 @@ function MessageBubble({
       >
         {message.content ? (
           <>
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {message.content}
+            </ReactMarkdown>
             {live && <span className="caret" />}
           </>
         ) : null}

@@ -1,10 +1,44 @@
 import { formatPageRefs, type Slide } from "./deck";
+import { latexLineToUnicode as u } from "./math";
 
 /**
  * Client-side PPTX export. Produces editable text boxes (not images) plus
  * speaker notes, mirroring the in-app deck design. pptxgenjs is loaded
  * on demand so it never weighs down the initial bundle.
+ *
+ * PPTX text boxes can't hold LaTeX, so every author string is flattened to a
+ * best-effort Unicode approximation (α, ⟨ψ|, ², ⊗ …) — keeping the export fully
+ * editable. The web and PDF paths render the same math with real KaTeX.
  */
+
+/** Return a copy of the slide with all author text converted LaTeX → Unicode. */
+function toUnicodeSlide(slide: Slide): Slide {
+  return {
+    ...slide,
+    title: u(slide.title),
+    subtitle: slide.subtitle ? u(slide.subtitle) : slide.subtitle,
+    bullets: slide.bullets?.map(u),
+    columns: slide.columns?.map((c) => ({
+      heading: u(c.heading),
+      bullets: c.bullets.map(u),
+    })),
+    quote: slide.quote
+      ? {
+          text: u(slide.quote.text),
+          attribution: slide.quote.attribution
+            ? u(slide.quote.attribution)
+            : slide.quote.attribution,
+        }
+      : slide.quote,
+    fact: slide.fact
+      ? { value: u(slide.fact.value), label: u(slide.fact.label) }
+      : slide.fact,
+    steps: slide.steps?.map((st) => ({
+      label: u(st.label),
+      detail: u(st.detail),
+    })),
+  };
+}
 
 const INK = "231D12";
 const INK_SOFT = "6B6051";
@@ -30,10 +64,11 @@ export async function exportDeckPptx(slides: Slide[], info: PptxDeckInfo) {
   const { default: PptxGenJS } = await import("pptxgenjs");
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
-  pptx.title = info.lessonTitle;
+  pptx.title = u(info.lessonTitle);
   const accent = (info.accent ?? "#36436e").replace("#", "").toUpperCase();
 
-  slides.forEach((slide, i) => {
+  slides.forEach((raw, i) => {
+    const slide = toUnicodeSlide(raw);
     const s = pptx.addSlide();
     s.background = { color: PAPER };
 
@@ -70,7 +105,7 @@ export async function exportDeckPptx(slides: Slide[], info: PptxDeckInfo) {
       fontFace: BODY_FONT,
       color: INK_FAINT,
     });
-    if (slide.notes) s.addNotes(slide.notes);
+    if (slide.notes) s.addNotes(u(slide.notes));
   });
 
   const fileName = `${info.lessonTitle.replace(/[^\w\d -]+/g, "").trim() || "deck"}.pptx`;

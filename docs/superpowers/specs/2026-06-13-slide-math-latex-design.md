@@ -58,8 +58,15 @@ Two layers, split by purity so the parser is testable and reusable everywhere:
   print keeps visible).
 - **`components/slides.tsx`** — wrap every author-text field in `<MathText>`:
   titles, subtitles, bullets, two-column headings + bullets, quote text, fact
-  value + label, process step label + detail, recap bullets. Display layout
-  (`$$`) is used inside the big-fact value when the model emits a full formula.
+  value + label, process step label + detail, recap bullets, and speaker notes
+  (on-screen panel, present-mode line, and print). Display layout (`$$`) is used
+  inside the big-fact value when the model emits a full formula.
+- **`components/quiz.tsx` + `components/takeaways.tsx`** — the materials prompt
+  instructs LaTeX for takeaways and quiz too (a quantum lesson's questions and
+  takeaways are full of notation), so those components render their strings
+  through `<MathText>` as well: question, choices, explanation; point + detail.
+  Without this, math would show as raw LaTeX there — so it's required, not
+  optional, once the prompt emits `$`.
 - **`components/tutor.tsx`** — add `remark-math` + `rehype-katex` to the existing
   `ReactMarkdown` (its content is already markdown, so it doesn't use MathText).
 - **`lib/pptx.ts`** — run each text field through `latexLineToUnicode` before
