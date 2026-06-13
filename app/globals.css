@@ -156,6 +156,12 @@ body::after {
   background: var(--paper);
 }
 
+/* KaTeX math inherits the slide's cqw-scaled font size (KaTeX sizes in em),
+   so formulas scale from thumbnail to fullscreen with the surrounding text. */
+.slide-stage .katex { font-size: 1.05em; }
+.slide-stage .katex-display { margin: 0.3em 0; }
+.katex-error { color: var(--bad); }
+
 @media print {
   @page {
     size: letter landscape;

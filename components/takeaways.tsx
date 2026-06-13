@@ -1,4 +1,5 @@
 import type { Takeaway } from "@/lib/db";
+import { MathText } from "./math-text";
 
 export function Takeaways({ takeaways }: { takeaways: Takeaway[] }) {
   return (
@@ -14,11 +15,11 @@ export function Takeaways({ takeaways }: { takeaways: Takeaway[] }) {
           </span>
           <div>
             <h3 className="font-display text-xl font-medium leading-snug">
-              {takeaway.point}
+              <MathText>{takeaway.point}</MathText>
             </h3>
             {takeaway.detail && (
               <p className="mt-1.5 text-ink-soft leading-relaxed max-w-xl">
-                {takeaway.detail}
+                <MathText>{takeaway.detail}</MathText>
               </p>
             )}
           </div>

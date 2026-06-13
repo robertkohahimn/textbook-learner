@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { QuizAttemptRow, QuizQuestion } from "@/lib/db";
+import { MathText } from "./math-text";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
@@ -108,17 +109,17 @@ export function Quiz({
                 <p className="flex gap-2 font-medium leading-snug">
                   <span aria-hidden>{r.correct ? "✓" : "✕"}</span>
                   <span className={r.correct ? "text-good" : "text-bad"}>
-                    {q.question}
+                    <MathText>{q.question}</MathText>
                   </span>
                 </p>
                 <p className="mt-2 text-sm text-ink-soft">
                   {!r.correct && my >= 0 && (
                     <>
-                      You said <strong>{q.choices[my]}</strong>.{" "}
+                      You said <strong><MathText>{q.choices[my]}</MathText></strong>.{" "}
                     </>
                   )}
-                  Correct: <strong>{q.choices[r.answerIndex]}</strong>.{" "}
-                  {r.explanation}
+                  Correct: <strong><MathText>{q.choices[r.answerIndex]}</MathText></strong>.{" "}
+                  <MathText>{r.explanation}</MathText>
                 </p>
               </li>
             );
@@ -151,7 +152,7 @@ export function Quiz({
 
       <div key={index} className="slide-in mt-8">
         <h2 className="font-display text-xl sm:text-2xl font-medium leading-snug">
-          {question.question}
+          <MathText>{question.question}</MathText>
         </h2>
 
         <div className="mt-6 space-y-2.5" role="radiogroup" aria-label="Answers">
@@ -188,7 +189,7 @@ export function Quiz({
                 >
                   {LETTERS[ci]}
                 </span>
-                <span className="leading-snug">{choice}</span>
+                <span className="leading-snug"><MathText>{choice}</MathText></span>
               </button>
             );
           })}
@@ -206,7 +207,7 @@ export function Quiz({
               )}
             </p>
             <p className="mt-1 text-sm text-ink-soft leading-relaxed">
-              {question.explanation}
+              <MathText>{question.explanation}</MathText>
             </p>
             <button
               type="button"
