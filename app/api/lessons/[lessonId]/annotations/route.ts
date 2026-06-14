@@ -25,8 +25,11 @@ export async function PUT(req: Request, { params }: Params) {
     slideIndex?: unknown;
     annotation?: unknown;
   };
+  const raw = body.slideIndex;
+  // typeof NaN === "number", and NaN slips past the < 0 / >= length checks, so
+  // guard for finiteness up front.
   const slideIndex =
-    typeof body.slideIndex === "number" ? Math.round(body.slideIndex) : -1;
+    typeof raw === "number" && Number.isFinite(raw) ? Math.round(raw) : -1;
   const materials = db.getMaterials(lessonId);
   if (slideIndex < 0 || !materials || slideIndex >= materials.slides.length) {
     return NextResponse.json({ error: "Invalid slideIndex" }, { status: 400 });
