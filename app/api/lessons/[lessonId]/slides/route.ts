@@ -31,6 +31,8 @@ export async function POST(req: Request, { params }: Params) {
     );
     const deckMeta = { ...options, generatedAt: new Date().toISOString() };
     db.saveDeck(lessonId, slides, deckMeta);
+    // The whole deck changed — index-anchored annotations no longer line up.
+    db.deleteSlideAnnotations(lessonId);
     return NextResponse.json({ slides, deckMeta });
   } catch (err) {
     const message = (err as Error).message;

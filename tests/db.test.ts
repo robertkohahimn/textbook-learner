@@ -151,6 +151,41 @@ describe("db", () => {
     ]);
   });
 
+  it("round-trips, updates, and deletes slide annotations", () => {
+    const id = db.newId();
+    db.insertBook({ id, title: "Anno", author: null, filename: "a.pdf" });
+    db.insertCurriculum(id, [
+      {
+        title: "M1",
+        description: "",
+        lessons: [{ title: "L", summary: "", pageStart: 1, pageEnd: 2 }],
+      },
+    ]);
+    const lessonId = db.getCurriculum(id)[0].lessons[0].id;
+
+    expect(db.getSlideAnnotations(lessonId)).toEqual({});
+
+    db.saveSlideAnnotation(lessonId, 0, {
+      note: "review this slide",
+      highlights: [
+        { id: "h1", field: "bullet:0", start: 0, end: 4, quote: "abcd", note: "key" },
+      ],
+    });
+    db.saveSlideAnnotation(lessonId, 2, { note: "slide three", highlights: [] });
+
+    const all = db.getSlideAnnotations(lessonId);
+    expect(Object.keys(all).sort()).toEqual(["0", "2"]);
+    expect(all[0].highlights[0].quote).toBe("abcd");
+    expect(all[2].note).toBe("slide three");
+
+    // Saving an empty annotation removes the row.
+    db.saveSlideAnnotation(lessonId, 0, { note: "", highlights: [] });
+    expect(db.getSlideAnnotations(lessonId)[0]).toBeUndefined();
+
+    db.deleteSlideAnnotations(lessonId);
+    expect(db.getSlideAnnotations(lessonId)).toEqual({});
+  });
+
   it("cascade-deletes a book's children", () => {
     const id = db.newId();
     db.insertBook({ id, title: "Del", author: null, filename: "d.pdf" });

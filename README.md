@@ -43,6 +43,10 @@ Every lesson gets a full slide deck, not just bullet lists:
   12-year-old", "go deep on the math").
 - **Revise one slide** with an instruction; the revision stays grounded in the
   lesson's source pages.
+- **Annotate** — select text on a slide to **highlight** it, attach a note to
+  any highlight, and write a personal note per slide. Highlights and notes
+  persist per lesson and survive reload; annotated slides are flagged on the
+  nav dots.
 - **Present mode** (`F`), **overview grid** (`G`), arrow-key navigation.
 - **Export** to PowerPoint (editable text + speaker notes) or print-to-PDF.
 
