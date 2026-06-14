@@ -56,6 +56,8 @@ export async function POST(req: Request, { params }: Params) {
       generatedAt: new Date().toISOString(),
     };
     db.saveDeck(lessonId, slides, deckMeta);
+    // This slide's text changed — its highlights/notes would point at stale text.
+    db.deleteSlideAnnotation(lessonId, index);
     return NextResponse.json({ slides, slide: revised, index });
   } catch (err) {
     const message = (err as Error).message;

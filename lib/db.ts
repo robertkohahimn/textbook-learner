@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { dataDir } from "./paths";
 import { normalizeSlide, type DeckMeta, type Slide } from "./deck";
+import { validateSlideAnnotation, type SlideAnnotation } from "./annotations";
 
 export type { Slide } from "./deck";
 
@@ -151,6 +152,13 @@ CREATE TABLE IF NOT EXISTS tutor_messages (
   role TEXT NOT NULL,
   content TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS slide_annotations (
+  lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  slide_index INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (lesson_id, slide_index)
 );
 `;
 
@@ -435,4 +443,60 @@ export function getTutorMessages(lessonId: string): TutorMessageRow[] {
       `SELECT * FROM tutor_messages WHERE lesson_id = ? ORDER BY created_at, rowid`
     )
     .all(lessonId) as TutorMessageRow[];
+}
+
+// --- slide annotations (user highlights + notes) ---
+
+export function getSlideAnnotations(
+  lessonId: string
+): Record<number, SlideAnnotation> {
+  const rows = getDb()
+    .prepare(
+      `SELECT slide_index, data FROM slide_annotations WHERE lesson_id = ?`
+    )
+    .all(lessonId) as { slide_index: number; data: string }[];
+  const out: Record<number, SlideAnnotation> = {};
+  for (const row of rows) {
+    try {
+      out[row.slide_index] = validateSlideAnnotation(JSON.parse(row.data));
+    } catch {
+      // skip a corrupt row rather than failing the whole load
+    }
+  }
+  return out;
+}
+
+export function saveSlideAnnotation(
+  lessonId: string,
+  slideIndex: number,
+  annotation: SlideAnnotation
+): void {
+  const clean = validateSlideAnnotation(annotation);
+  // An empty annotation is the same as none — keep the table tidy.
+  if (clean.note === "" && clean.highlights.length === 0) {
+    deleteSlideAnnotation(lessonId, slideIndex);
+    return;
+  }
+  getDb()
+    .prepare(
+      `INSERT INTO slide_annotations (lesson_id, slide_index, data, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(lesson_id, slide_index)
+       DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
+    )
+    .run(lessonId, slideIndex, JSON.stringify(clean));
+}
+
+export function deleteSlideAnnotation(lessonId: string, slideIndex: number): void {
+  getDb()
+    .prepare(
+      `DELETE FROM slide_annotations WHERE lesson_id = ? AND slide_index = ?`
+    )
+    .run(lessonId, slideIndex);
+}
+
+export function deleteSlideAnnotations(lessonId: string): void {
+  getDb()
+    .prepare(`DELETE FROM slide_annotations WHERE lesson_id = ?`)
+    .run(lessonId);
 }

@@ -162,6 +162,20 @@ body::after {
 .slide-stage .katex-display { margin: 0.3em 0; }
 .katex-error { color: var(--bad); }
 
+/* user highlights */
+.anno-mark {
+  background-color: rgba(244, 205, 92, 0.5);
+  color: inherit;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  cursor: pointer;
+}
+.slide-stage ::selection {
+  background: rgba(244, 205, 92, 0.55);
+  color: inherit;
+}
+
 @media print {
   @page {
     size: letter landscape;

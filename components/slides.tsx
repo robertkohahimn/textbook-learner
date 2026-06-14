@@ -10,6 +10,14 @@ import {
 } from "@/lib/deck";
 import { WorkingDot } from "./bits";
 import { MathText } from "./math-text";
+import {
+  AnnotationPanel,
+  captureFieldSelection,
+  Highlightable,
+  useSlideAnnotations,
+  type FieldSelection,
+} from "./slide-annotations";
+import { emptyAnnotation, type Highlight } from "@/lib/annotations";
 
 export function Slides({
   lessonId,
@@ -31,10 +39,46 @@ export function Slides({
   const [exportOpen, setExportOpen] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [reviseOpen, setReviseOpen] = useState(false);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
+  const [selection, setSelection] = useState<FieldSelection | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const presentRef = useRef<HTMLDivElement>(null);
+  const annos = useSlideAnnotations(lessonId);
 
   const slide = slides[Math.min(index, slides.length - 1)];
+  const safeIndex = Math.min(index, slides.length - 1);
+  const ann = annos.annotations[safeIndex] ?? emptyAnnotation();
+
+  const captureSelection = useCallback(() => {
+    if (!stageRef.current) return;
+    setSelection(captureFieldSelection(stageRef.current));
+  }, []);
+
+  function addHighlightFromSelection() {
+    if (!selection) return;
+    const hl: Highlight = {
+      id: crypto.randomUUID(),
+      field: selection.field,
+      start: selection.start,
+      end: selection.end,
+      quote: selection.quote,
+    };
+    annos.addHighlight(safeIndex, hl);
+    window.getSelection()?.removeAllRanges();
+    setSelection(null);
+    setAnnotateOpen(true);
+  }
+
+  const pickHighlight = useCallback((id: string) => {
+    setAnnotateOpen(true);
+    setFocusId(id);
+    setTimeout(() => {
+      document
+        .getElementById(`hl-${id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 60);
+  }, []);
 
   // A regenerated deck may be shorter than where the reader was.
   useEffect(() => {
@@ -134,6 +178,16 @@ export function Slides({
             )}
           </div>
           <ToolButton
+            onClick={() => setAnnotateOpen((v) => !v)}
+            active={annotateOpen}
+            title="Highlights & your notes"
+          >
+            Annotate
+            {(ann.highlights.length > 0 || ann.note) && (
+              <span className="ml-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />
+            )}
+          </ToolButton>
+          <ToolButton
             onClick={() => setCustomizeOpen((v) => !v)}
             active={customizeOpen}
           >
@@ -149,9 +203,30 @@ export function Slides({
           onDone={() => {
             setCustomizeOpen(false);
             setIndex(0);
+            annos.reset(); // the server cleared this deck's annotations
             onDeckChange();
           }}
         />
+      )}
+
+      {selection && (
+        <div
+          className="fixed z-30 print:hidden"
+          style={{
+            left: selection.rect.left + selection.rect.width / 2,
+            top: selection.rect.top - 8,
+            transform: "translate(-50%, -100%)",
+          }}
+          onMouseDown={(e) => e.preventDefault()} // keep the text selection alive
+        >
+          <button
+            type="button"
+            onClick={addHighlightFromSelection}
+            className="flex items-center gap-1.5 rounded-full border border-ink/10 bg-ink px-3 py-1.5 text-xs text-paper shadow-[0_10px_24px_-12px_rgba(35,29,18,0.7)] cursor-pointer"
+          >
+            <span aria-hidden>✦</span> Highlight
+          </button>
+        </div>
       )}
 
       {view === "grid" ? (
@@ -169,7 +244,13 @@ export function Slides({
               }`}
               aria-label={`Go to slide ${i + 1}: ${s.title}`}
             >
-              <Stage slide={s} index={i} total={slides.length} thumb />
+              <Stage
+                slide={s}
+                index={i}
+                total={slides.length}
+                thumb
+                highlights={(annos.annotations[i] ?? emptyAnnotation()).highlights}
+              />
               <p className="mt-1.5 truncate font-mono text-[11px] text-ink-faint group-hover:text-ink-soft">
                 {i + 1} · {s.title}
               </p>
@@ -190,11 +271,19 @@ export function Slides({
             <div
               ref={stageRef}
               key={index}
+              onMouseDown={() => setSelection(null)}
+              onMouseUp={captureSelection}
               className={`slide-in w-full ${
                 presenting ? "max-w-[min(100vw,170vh)]" : ""
               }`}
             >
-              <Stage slide={slide} index={index} total={slides.length} />
+              <Stage
+                slide={slide}
+                index={index}
+                total={slides.length}
+                highlights={ann.highlights}
+                onPick={pickHighlight}
+              />
             </div>
 
             {presenting && (
@@ -223,21 +312,31 @@ export function Slides({
               ← Back
             </NavButton>
             <div className="flex items-center gap-1.5" role="tablist" aria-label="Slides">
-              {slides.map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  role="tab"
-                  aria-selected={i === index}
-                  aria-label={`Slide ${i + 1}: ${s.title}`}
-                  onClick={() => setIndex(i)}
-                  className={`rounded-full transition-all duration-300 cursor-pointer ${
-                    i === index
-                      ? "w-6 h-1.5 bg-accent"
-                      : "size-1.5 bg-line hover:bg-ink-faint"
-                  }`}
-                />
-              ))}
+              {slides.map((s, i) => {
+                const a = annos.annotations[i];
+                const annotated = Boolean(a && (a.highlights.length > 0 || a.note));
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    role="tab"
+                    aria-selected={i === index}
+                    aria-label={`Slide ${i + 1}: ${s.title}${
+                      annotated ? " (annotated)" : ""
+                    }`}
+                    onClick={() => setIndex(i)}
+                    className={`rounded-full transition-all duration-300 cursor-pointer ${
+                      i === index
+                        ? "w-6 h-1.5 bg-accent"
+                        : "size-1.5 bg-line hover:bg-ink-faint"
+                    } ${
+                      annotated && i !== index
+                        ? "ring-1 ring-[rgba(217,164,38,0.95)] ring-offset-1 ring-offset-paper"
+                        : ""
+                    }`}
+                  />
+                );
+              })}
             </div>
             <NavButton onClick={next} disabled={index === slides.length - 1}>
               Next →
@@ -255,6 +354,18 @@ export function Slides({
             </div>
           )}
 
+          {annotateOpen && (
+            <AnnotationPanel
+              annotation={ann}
+              focusId={focusId}
+              onNoteChange={(note) => annos.setSlideNote(safeIndex, note)}
+              onHighlightNote={(id, note) =>
+                annos.setHighlightNote(safeIndex, id, note)
+              }
+              onRemove={(id) => annos.removeHighlight(safeIndex, id)}
+            />
+          )}
+
           <div className="mt-4">
             {reviseOpen ? (
               <RevisePanel
@@ -263,6 +374,7 @@ export function Slides({
                 onClose={() => setReviseOpen(false)}
                 onDone={() => {
                   setReviseOpen(false);
+                  annos.clearLocal(safeIndex); // server cleared this slide's annotations
                   onDeckChange();
                 }}
               />
@@ -278,7 +390,7 @@ export function Slides({
           </div>
 
           <p className="mt-3 text-center text-xs text-ink-faint">
-            Tip: ← → slides · N notes · G grid · F present
+            Tip: select text to highlight · ← → slides · N notes · G grid · F present
           </p>
         </div>
       )}
@@ -287,7 +399,12 @@ export function Slides({
       <div className="print-deck hidden print:block">
         {slides.map((s, i) => (
           <div key={i} className="break-after-page pb-6">
-            <Stage slide={s} index={i} total={slides.length} />
+            <Stage
+              slide={s}
+              index={i}
+              total={slides.length}
+              highlights={(annos.annotations[i] ?? emptyAnnotation()).highlights}
+            />
             {s.notes && (
               <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                 <span className="font-mono text-xs text-ink-faint">Notes · </span>
@@ -308,11 +425,15 @@ function Stage({
   index,
   total,
   thumb = false,
+  highlights = [],
+  onPick,
 }: {
   slide: Slide;
   index: number;
   total: number;
   thumb?: boolean;
+  highlights?: Highlight[];
+  onPick?: (id: string) => void;
 }) {
   return (
     <div
@@ -325,7 +446,7 @@ function Stage({
         aria-hidden
         className="absolute top-0 left-[6cqw] right-[6cqw] h-[0.45cqw] min-h-[2px] rounded-b bg-accent"
       />
-      <SlideBody slide={slide} />
+      <SlideBody slide={slide} highlights={highlights} onPick={onPick} />
       <div className="absolute bottom-[3cqw] left-[6cqw] right-[6cqw] flex items-end justify-between">
         {slide.pages?.length ? (
           <span className="font-mono text-[1.5cqw] text-ink-faint">
@@ -342,17 +463,35 @@ function Stage({
   );
 }
 
-function SlideBody({ slide }: { slide: Slide }) {
+function SlideBody({
+  slide,
+  highlights,
+  onPick,
+}: {
+  slide: Slide;
+  highlights: Highlight[];
+  onPick?: (id: string) => void;
+}) {
+  // Render one annotatable field by its stable key.
+  const H = (field: string, text: string) => (
+    <Highlightable
+      field={field}
+      text={text}
+      highlights={highlights}
+      onPick={onPick}
+    />
+  );
+
   switch (slide.layout) {
     case "title":
       return (
         <div className="flex flex-1 flex-col items-center justify-center px-[8cqw] text-center">
           <h2 className="font-display text-[5.6cqw] font-medium leading-[1.12] text-balance">
-            <MathText>{slide.title}</MathText>
+            {H("title", slide.title)}
           </h2>
           {slide.subtitle && (
             <p className="mt-[2.4cqw] max-w-[70cqw] text-[2.4cqw] leading-snug text-ink-soft">
-              <MathText>{slide.subtitle}</MathText>
+              {H("subtitle", slide.subtitle)}
             </p>
           )}
         </div>
@@ -364,18 +503,18 @@ function SlideBody({ slide }: { slide: Slide }) {
             Section
           </p>
           <h2 className="mt-[1.6cqw] font-display text-[5cqw] font-medium leading-[1.12] text-balance">
-            <MathText>{slide.title}</MathText>
+            {H("title", slide.title)}
           </h2>
           {slide.subtitle && (
             <p className="mt-[1.8cqw] max-w-[64cqw] text-[2.2cqw] leading-snug text-ink-soft">
-              <MathText>{slide.subtitle}</MathText>
+              {H("subtitle", slide.subtitle)}
             </p>
           )}
         </div>
       );
     case "two-column":
       return (
-        <ContentFrame title={slide.title}>
+        <ContentFrame title={slide.title} renderField={H}>
           <div
             className="grid flex-1 content-start gap-[3.4cqw]"
             style={{
@@ -385,7 +524,7 @@ function SlideBody({ slide }: { slide: Slide }) {
             {slide.columns?.map((col, ci) => (
               <div key={ci}>
                 <h3 className="border-b border-line pb-[1cqw] text-[2.1cqw] font-semibold text-accent">
-                  <MathText>{col.heading}</MathText>
+                  {H(`col:${ci}:heading`, col.heading)}
                 </h3>
                 <ul className="mt-[1.6cqw] space-y-[1.3cqw]">
                   {col.bullets.map((b, bi) => (
@@ -394,7 +533,7 @@ function SlideBody({ slide }: { slide: Slide }) {
                         aria-hidden
                         className="mt-[0.85cqw] size-[0.7cqw] shrink-0 rounded-full bg-accent"
                       />
-                      <span><MathText>{b}</MathText></span>
+                      <span>{H(`col:${ci}:bullet:${bi}`, b)}</span>
                     </li>
                   ))}
                 </ul>
@@ -405,17 +544,17 @@ function SlideBody({ slide }: { slide: Slide }) {
       );
     case "quote":
       return (
-        <ContentFrame title={slide.title}>
+        <ContentFrame title={slide.title} renderField={H}>
           <div className="flex flex-1 flex-col items-center justify-center px-[4cqw] text-center">
             <span aria-hidden className="font-display text-[7cqw] leading-none text-accent">
               “
             </span>
             <blockquote className="-mt-[2cqw] max-w-[64cqw] font-display text-[3.1cqw] italic leading-[1.3] text-balance">
-              <MathText>{slide.quote?.text ?? ""}</MathText>
+              {H("quote", slide.quote?.text ?? "")}
             </blockquote>
             {slide.quote?.attribution && (
               <p className="mt-[2cqw] text-[1.9cqw] text-ink-soft">
-                — <MathText>{slide.quote.attribution}</MathText>
+                — {H("attribution", slide.quote.attribution)}
               </p>
             )}
           </div>
@@ -423,20 +562,20 @@ function SlideBody({ slide }: { slide: Slide }) {
       );
     case "big-fact":
       return (
-        <ContentFrame title={slide.title}>
+        <ContentFrame title={slide.title} renderField={H}>
           <div className="flex flex-1 flex-col items-center justify-center text-center">
             <p className="font-display text-[10cqw] font-medium leading-none text-accent">
-              <MathText>{slide.fact?.value ?? ""}</MathText>
+              {H("fact:value", slide.fact?.value ?? "")}
             </p>
             <p className="mt-[2cqw] max-w-[58cqw] text-[2.3cqw] leading-snug text-ink-soft">
-              <MathText>{slide.fact?.label ?? ""}</MathText>
+              {H("fact:label", slide.fact?.label ?? "")}
             </p>
           </div>
         </ContentFrame>
       );
     case "process":
       return (
-        <ContentFrame title={slide.title}>
+        <ContentFrame title={slide.title} renderField={H}>
           <ol className="flex flex-1 flex-col justify-center gap-[2.2cqw]">
             {slide.steps?.map((step, si) => (
               <li key={si} className="flex gap-[2cqw]">
@@ -445,11 +584,11 @@ function SlideBody({ slide }: { slide: Slide }) {
                 </span>
                 <div className="min-w-0">
                   <p className="text-[2.1cqw] font-semibold leading-[1.35]">
-                    <MathText>{step.label}</MathText>
+                    {H(`step:${si}:label`, step.label)}
                   </p>
                   {step.detail && (
                     <p className="text-[1.85cqw] leading-snug text-ink-soft">
-                      <MathText>{step.detail}</MathText>
+                      {H(`step:${si}:detail`, step.detail)}
                     </p>
                   )}
                 </div>
@@ -462,7 +601,7 @@ function SlideBody({ slide }: { slide: Slide }) {
     case "bullets":
     default:
       return (
-        <ContentFrame title={slide.title}>
+        <ContentFrame title={slide.title} renderField={H}>
           <ul className="flex max-w-[72cqw] flex-1 flex-col justify-center gap-[2.2cqw]">
             {slide.bullets?.map((bullet, bi) => (
               <li key={bi} className="flex gap-[1.6cqw] text-[2.4cqw] leading-snug">
@@ -476,7 +615,7 @@ function SlideBody({ slide }: { slide: Slide }) {
                 >
                   {slide.layout === "recap" ? String(bi + 1).padStart(2, "0") : ""}
                 </span>
-                <span><MathText>{bullet}</MathText></span>
+                <span>{H(`bullet:${bi}`, bullet)}</span>
               </li>
             ))}
           </ul>
@@ -487,15 +626,17 @@ function SlideBody({ slide }: { slide: Slide }) {
 
 function ContentFrame({
   title,
+  renderField,
   children,
 }: {
   title: string;
+  renderField: (field: string, text: string) => React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-1 flex-col px-[6cqw] pt-[5cqw] pb-[7cqw]">
       <h2 className="font-display text-[3.4cqw] font-medium leading-[1.15] text-balance">
-        <MathText>{title}</MathText>
+        {renderField("title", title)}
       </h2>
       <div className="mt-[2.6cqw] flex flex-1 flex-col">{children}</div>
     </div>
