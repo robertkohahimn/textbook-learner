@@ -26,8 +26,9 @@ export async function PUT(req: Request, { params }: Params) {
     annotation?: unknown;
   };
   const slideIndex =
-    typeof body.slideIndex === "number" ? Math.floor(body.slideIndex) : -1;
-  if (slideIndex < 0) {
+    typeof body.slideIndex === "number" ? Math.round(body.slideIndex) : -1;
+  const materials = db.getMaterials(lessonId);
+  if (slideIndex < 0 || !materials || slideIndex >= materials.slides.length) {
     return NextResponse.json({ error: "Invalid slideIndex" }, { status: 400 });
   }
 

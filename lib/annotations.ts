@@ -119,6 +119,13 @@ function isString(v: unknown): v is string {
   return typeof v === "string";
 }
 
+/** Small deterministic hash (base36) — for stable fallback highlight ids. */
+function hashStr(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
 /** Sanitize an annotation from the API or DB into a well-formed object. */
 export function validateSlideAnnotation(data: unknown): SlideAnnotation {
   const root = (typeof data === "object" && data !== null ? data : {}) as Record<
@@ -139,12 +146,16 @@ export function validateSlideAnnotation(data: unknown): SlideAnnotation {
     const end = typeof hl.end === "number" ? Math.floor(hl.end) : NaN;
     if (!field || !Number.isFinite(start) || !Number.isFinite(end) || start >= end || start < 0)
       continue;
+    const quote = isString(hl.quote) ? hl.quote : "";
     const out: Highlight = {
-      id: isString(hl.id) && hl.id ? hl.id : `${field}:${start}:${end}`,
+      // Fallback id is deterministic (stable across reads) and quote-sensitive
+      // so distinct highlights at the same range don't collide. The client
+      // normally supplies a UUID, so this only matters for hand-built input.
+      id: isString(hl.id) && hl.id ? hl.id : `${field}:${start}:${end}:${hashStr(quote)}`,
       field,
       start,
       end,
-      quote: isString(hl.quote) ? hl.quote : "",
+      quote,
     };
     if (isString(hl.note) && hl.note.trim()) out.note = hl.note.trim();
     highlights.push(out);

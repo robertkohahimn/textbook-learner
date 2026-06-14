@@ -242,6 +242,18 @@ export function useSlideAnnotations(lessonId: string) {
     };
   }, [lessonId]);
 
+  // Drop a pending debounced PUT (one slide, or all) so a server-side clear
+  // isn't undone by a stale save that fires afterward.
+  const cancelPersist = useCallback((index?: number) => {
+    if (index === undefined) {
+      for (const handle of Object.values(timers.current)) clearTimeout(handle);
+      timers.current = {};
+    } else {
+      clearTimeout(timers.current[index]);
+      delete timers.current[index];
+    }
+  }, []);
+
   const persist = useCallback(
     (index: number, ann: SlideAnnotation, debounce: boolean) => {
       const send = () => {
@@ -275,14 +287,19 @@ export function useSlideAnnotations(lessonId: string) {
 
   return {
     annotations,
-    reset: () => setAnnotations({}),
-    clearLocal: (i: number) =>
+    reset: () => {
+      cancelPersist();
+      setAnnotations({});
+    },
+    clearLocal: (i: number) => {
+      cancelPersist(i);
       setAnnotations((prev) => {
         if (!(i in prev)) return prev;
         const next = { ...prev };
         delete next[i];
         return next;
-      }),
+      });
+    },
     addHighlight: (i: number, hl: Highlight) =>
       update(i, (a) => ({ ...a, highlights: [...a.highlights, hl] })),
     removeHighlight: (i: number, id: string) =>

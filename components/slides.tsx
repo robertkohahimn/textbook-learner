@@ -91,6 +91,12 @@ export function Slides({
     [slides.length]
   );
 
+  // A pending selection belongs to the slide it was made on — drop it on any
+  // navigation so the floating Highlight button can't save to the wrong slide.
+  useEffect(() => {
+    setSelection(null);
+  }, [index, view, slides]);
+
   const present = useCallback(() => {
     presentRef.current?.requestFullscreen?.().catch((err: unknown) => {
       console.warn("Fullscreen unavailable:", err);
@@ -273,6 +279,10 @@ export function Slides({
               key={index}
               onMouseDown={() => setSelection(null)}
               onMouseUp={captureSelection}
+              // Keyboard entry point: a selection made via the browser's caret
+              // (Shift+arrows / caret browsing) is captured on keyup, then the
+              // floating Highlight button (a real <button>) is focusable.
+              onKeyUp={captureSelection}
               className={`slide-in w-full ${
                 presenting ? "max-w-[min(100vw,170vh)]" : ""
               }`}

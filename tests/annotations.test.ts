@@ -104,6 +104,15 @@ describe("validateSlideAnnotation", () => {
     });
   });
 
+  it("derives a deterministic, quote-sensitive fallback id when id is missing", () => {
+    const mk = (quote: string) =>
+      validateSlideAnnotation({
+        highlights: [{ field: "quote", start: 0, end: 2, quote }],
+      }).highlights[0].id;
+    expect(mk("ok")).toBe(mk("ok")); // stable across calls (safe on every read)
+    expect(mk("ok")).not.toBe(mk("different")); // quote affects the id
+  });
+
   it("coerces a numeric per-highlight note away and trims the slide note", () => {
     const a = {
       note: "  spaced  ",
