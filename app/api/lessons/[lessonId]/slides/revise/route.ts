@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import * as db from "@/lib/db";
 import { reviseSlide } from "@/lib/deck-generate";
+import { DEFAULT_DECK_OPTIONS } from "@/lib/deck";
 import { runExclusive } from "@/lib/jobs";
 
 export const runtime = "nodejs";
@@ -51,8 +52,7 @@ export async function POST(req: Request, { params }: Params) {
     const slides = [...materials.slides];
     slides[index] = revised;
     const deckMeta = db.getDeckMeta(lessonId) ?? {
-      format: "presenter" as const,
-      length: "default" as const,
+      ...DEFAULT_DECK_OPTIONS,
       generatedAt: new Date().toISOString(),
     };
     db.saveDeck(lessonId, slides, deckMeta);

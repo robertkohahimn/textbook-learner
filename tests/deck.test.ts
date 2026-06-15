@@ -158,8 +158,8 @@ describe("normalizeSlide", () => {
 
 describe("parseDeckOptions", () => {
   it("applies defaults", () => {
-    expect(parseDeckOptions({})).toEqual({ format: "presenter", length: "default" });
-    expect(parseDeckOptions(null)).toEqual({ format: "presenter", length: "default" });
+    expect(parseDeckOptions({})).toEqual({ format: "detailed", length: "long" });
+    expect(parseDeckOptions(null)).toEqual({ format: "detailed", length: "long" });
   });
 
   it("accepts valid options and trims focus", () => {
@@ -170,8 +170,8 @@ describe("parseDeckOptions", () => {
 
   it("ignores invalid values", () => {
     expect(parseDeckOptions({ format: "fancy", length: "huge" })).toEqual({
-      format: "presenter",
-      length: "default",
+      format: "detailed",
+      length: "long",
     });
   });
 });
@@ -183,6 +183,8 @@ describe("prompts", () => {
     const presenter = deckSpec({ format: "presenter", length: "short" });
     expect(presenter).toContain("6 to 8");
     expect(presenter).toContain("presenter slides");
+    // The learner level is applied to every deck, even without a focus.
+    expect(presenter).toContain("first-year university student");
     const detailed = deckSpec({
       format: "detailed",
       length: "long",
