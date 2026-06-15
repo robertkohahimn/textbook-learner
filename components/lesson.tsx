@@ -48,14 +48,20 @@ export function Lesson({ lessonId }: { lessonId: string }) {
     window.history.replaceState(null, "", url);
   }
 
-  const poll = usePoll<LessonResponse>(`/api/lessons/${lessonId}`, 2500, true);
-  const { data, error, refresh } = poll;
-  // Materials are immutable once the lesson is ready/errored; the mutation paths
-  // (revise, customize, quiz) call refresh() directly. Stop the interval so the
-  // (now large) materials payload isn't re-fetched every 2.5s for the session.
-  poll.setActive(
-    !data || (data.lesson.status !== "ready" && data.lesson.status !== "error")
+  const { data, error, refresh, setActive } = usePoll<LessonResponse>(
+    `/api/lessons/${lessonId}`,
+    2500,
+    true
   );
+  // Stop polling once the lesson is ready: materials are then immutable and the
+  // mutation paths (revise, customize, quiz) call refresh() directly, so there's
+  // no reason to keep re-fetching the (now large) payload every 2.5s. Keep
+  // polling while pending/generating AND on error — the lesson GET route
+  // re-enqueues a pending/error lesson, so polling is what drives the automatic
+  // retry the error copy promises.
+  useEffect(() => {
+    setActive(!data || data.lesson.status !== "ready");
+  }, [data, setActive]);
 
   const ready = data?.lesson.status === "ready" && data.materials;
 

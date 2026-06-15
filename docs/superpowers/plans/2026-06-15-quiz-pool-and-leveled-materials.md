@@ -1379,14 +1379,19 @@ Replace the `usePoll` invocation so it only polls while the lesson is still gene
 becomes:
 
 ```tsx
-  const poll = usePoll<LessonResponse>(`/api/lessons/${lessonId}`, 2500, true);
-  const { data, error, refresh } = poll;
-  // Materials are immutable once the lesson is ready/errored; the mutation paths
-  // (revise, customize, quiz) call refresh() directly. Stop the interval so the
-  // (now large) materials payload isn't re-fetched every 2.5s for the session.
-  poll.setActive(
-    !data || (data.lesson.status !== "ready" && data.lesson.status !== "error")
+  const { data, error, refresh, setActive } = usePoll<LessonResponse>(
+    `/api/lessons/${lessonId}`,
+    2500,
+    true
   );
+  // Stop polling once the lesson is ready: materials are then immutable and the
+  // mutation paths (revise, customize, quiz) call refresh() directly. Keep polling
+  // while pending/generating AND on error — the lesson GET route re-enqueues a
+  // pending/error lesson, so polling is what drives the automatic retry the error
+  // copy promises. Run setActive from an effect so it's not a render-phase side effect.
+  useEffect(() => {
+    setActive(!data || data.lesson.status !== "ready");
+  }, [data, setActive]);
 ```
 
 This requires `usePoll` to expose runtime control of `active`. Update `components/use-poll.ts` (currently `active` is read once into a ref):

@@ -226,16 +226,22 @@ throw.
 
 ## 8. Polling fix (components/lesson.tsx)
 
-Gate the poll on liveness so it stops once the lesson is terminal:
+Stop polling once the lesson is `ready` (only). Update `setActive` from a `useEffect` so the
+control runs after render, not during it:
 
 ```ts
-const live = !data || (data.lesson.status !== "ready" && data.lesson.status !== "error");
-const { data, error, refresh } = usePoll(`/api/lessons/${lessonId}`, 2500, live);
+const { data, error, refresh, setActive } = usePoll(`/api/lessons/${lessonId}`, 2500, true);
+useEffect(() => {
+  setActive(!data || data.lesson.status !== "ready");
+}, [data, setActive]);
 ```
 
 Materials are immutable once `ready`; the mutation paths (slide revise, deck customize,
 quiz grade) already call `refresh()` directly, so manual refresh continues to work after the
-interval stops.
+interval stops. **Keep polling on `error`**: the lesson GET route re-enqueues a `pending`/`error`
+lesson on each request, so the poll is what drives the automatic retry that the error-state copy
+("Folio is retrying now — this page will refresh itself") promises. The heavy payload only
+exists once `ready`, so stopping there captures the savings without breaking retry.
 
 ## 9. Backward compatibility
 
