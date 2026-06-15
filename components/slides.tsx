@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  DEFAULT_DECK_OPTIONS,
   formatPageRefs,
   type DeckFormat,
   type DeckLength,
@@ -446,34 +447,55 @@ const useIsoLayoutEffect =
  * the container), so the same slide fits identically as a thumbnail, inline,
  * and fullscreen.
  */
-function Fit({ children }: { children: React.ReactNode }) {
+function Fit({
+  children,
+  contentKey,
+}: {
+  children: React.ReactNode;
+  /**
+   * A value that changes whenever the rendered content changes. It drives a
+   * synchronous re-fit, so revising a slide in place (the Stage isn't
+   * remounted) re-measures before paint instead of waiting on the observer.
+   */
+  contentKey?: unknown;
+}) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
 
+  const measure = useCallback(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    if (!box || !content) return;
+    const available = box.clientHeight;
+    // offsetHeight is the natural, pre-transform height — scale() never
+    // changes it, so the measurement stays stable as we re-render.
+    const natural = content.offsetHeight;
+    if (available === 0 || natural === 0) return; // hidden (e.g. print clone)
+    const next = Math.min(1, available / natural);
+    setScale((prev) => (Math.abs(prev - next) > 0.005 ? next : prev));
+  }, []);
+
+  // Re-fit synchronously, before paint, on mount and whenever the content
+  // changes. "Revise this slide" swaps the slide in place without remounting
+  // the Stage, so without this a revised (taller) slide would paint at the old
+  // scale and overflow until the ResizeObserver below happened to fire — and
+  // that async notification isn't guaranteed to arrive.
+  useIsoLayoutEffect(() => {
+    measure();
+  }, [measure, contentKey]);
+
+  // Backstop for height changes that don't come from a re-render: the stage
+  // resizing (responsive, grid, fullscreen) or content reflowing late (fonts).
   useIsoLayoutEffect(() => {
     const box = boxRef.current;
     const content = contentRef.current;
     if (!box || !content) return;
-
-    const measure = () => {
-      const available = box.clientHeight;
-      // offsetHeight is the natural, pre-transform height — scale() never
-      // changes it, so the measurement stays stable as we re-render.
-      const natural = content.offsetHeight;
-      if (available === 0 || natural === 0) return; // hidden (e.g. print clone)
-      const next = Math.min(1, available / natural);
-      setScale((prev) => (Math.abs(prev - next) > 0.005 ? next : prev));
-    };
-
-    measure();
-    // Re-fit when the stage resizes (responsive, grid, fullscreen) or the
-    // content reflows (fonts, async KaTeX math).
     const ro = new ResizeObserver(measure);
     ro.observe(box);
     ro.observe(content);
     return () => ro.disconnect();
-  }, []);
+  }, [measure]);
 
   return (
     <div className="flex flex-1 flex-col justify-center overflow-hidden" ref={boxRef}>
@@ -518,7 +540,7 @@ function Stage({
         aria-hidden
         className="absolute top-0 left-[6cqw] right-[6cqw] h-[0.45cqw] min-h-[2px] rounded-b bg-accent"
       />
-      <Fit>
+      <Fit contentKey={JSON.stringify(slide)}>
         <SlideBody slide={slide} highlights={highlights} onPick={onPick} />
       </Fit>
       <div className="absolute bottom-[3cqw] left-[6cqw] right-[6cqw] flex items-end justify-between">
@@ -739,8 +761,12 @@ function CustomizePanel({
   deckMeta: DeckMeta | null;
   onDone: () => void;
 }) {
-  const [format, setFormat] = useState<DeckFormat>(deckMeta?.format ?? "presenter");
-  const [length, setLength] = useState<DeckLength>(deckMeta?.length ?? "default");
+  const [format, setFormat] = useState<DeckFormat>(
+    deckMeta?.format ?? DEFAULT_DECK_OPTIONS.format
+  );
+  const [length, setLength] = useState<DeckLength>(
+    deckMeta?.length ?? DEFAULT_DECK_OPTIONS.length
+  );
   const [focus, setFocus] = useState(deckMeta?.focus ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

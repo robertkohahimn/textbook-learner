@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { QuizAttemptRow, QuizQuestion } from "@/lib/db";
+import { bestAttempt, quizCountPresets, selectQuestions } from "@/lib/quiz";
 import { MathText } from "./math-text";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
@@ -23,23 +24,35 @@ export function Quiz({
   attempts: QuizAttemptRow[];
   onGraded: () => void;
 }) {
+  const presets = quizCountPresets(quiz.length);
+  const [phase, setPhase] = useState<"setup" | "quiz">("setup");
+  const [selected, setSelected] = useState<number[]>([]);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
   const [result, setResult] = useState<GradeResponse | null>(null);
   const [grading, setGrading] = useState(false);
 
-  const question = quiz[index];
-  const best = attempts.reduce(
-    (max, a) => Math.max(max, a.score),
-    0
-  );
+  const sampled = selected.map((i) => quiz[i]);
+  const question = sampled[index];
+
+  const bestIdx = bestAttempt(attempts);
+  const best = bestIdx === null ? null : attempts[bestIdx];
+
+  function start(count: number) {
+    setSelected(selectQuestions(quiz, count));
+    setIndex(0);
+    setAnswers([]);
+    setPicked(null);
+    setResult(null);
+    setPhase("quiz");
+  }
 
   async function next() {
     const finalAnswers = [...answers, picked ?? -1];
     setAnswers(finalAnswers);
     setPicked(null);
-    if (index + 1 < quiz.length) {
+    if (index + 1 < selected.length) {
       setIndex(index + 1);
       return;
     }
@@ -48,7 +61,7 @@ export function Quiz({
       const res = await fetch(`/api/lessons/${lessonId}/quiz`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers: finalAnswers }),
+        body: JSON.stringify({ questions: selected, answers: finalAnswers }),
       });
       if (res.ok) {
         setResult((await res.json()) as GradeResponse);
@@ -59,21 +72,46 @@ export function Quiz({
     }
   }
 
-  function retake() {
-    setIndex(0);
-    setAnswers([]);
-    setPicked(null);
-    setResult(null);
+  // ---- setup phase ----
+  if (phase === "setup") {
+    return (
+      <div className="fade max-w-xl">
+        <div className="rise rounded-2xl border border-line bg-paper-raised px-8 py-10">
+          <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">Quiz</p>
+          <h2 className="mt-2 font-display text-2xl font-medium">How many questions?</h2>
+          <p className="mt-2 text-sm text-ink-soft">
+            {quiz.length} in the pool — we&apos;ll pick a spread across the section&apos;s topics.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            {presets.options.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => start(o.value)}
+                className="rounded-full border border-line px-4 py-2 text-sm hover:border-accent hover:text-accent transition-colors cursor-pointer"
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {best && best.total > 0 && (
+            <p className="mt-6 font-mono text-xs text-ink-faint">
+              best {best.score}/{best.total} ({Math.round((best.score / best.total) * 100)}%) ·{" "}
+              {attempts.length} {attempts.length === 1 ? "attempt" : "attempts"}
+            </p>
+          )}
+        </div>
+      </div>
+    );
   }
 
+  // ---- result phase ----
   if (result) {
     const fraction = result.score / result.total;
     return (
       <div className="fade max-w-xl">
         <div className="rise rounded-2xl border border-line bg-paper-raised px-8 py-10 text-center">
-          <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
-            Your score
-          </p>
+          <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">Your score</p>
           <p className="mt-3 font-display text-6xl font-medium">
             {result.score}
             <span className="text-2xl text-ink-faint"> / {result.total}</span>
@@ -89,23 +127,19 @@ export function Quiz({
           </p>
           <button
             type="button"
-            onClick={retake}
+            onClick={() => setPhase("setup")}
             className="mt-6 rounded-full bg-accent text-accent-ink px-5 py-2.5 text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
           >
-            Retake quiz
+            Take another
           </button>
         </div>
 
         <ol className="mt-8 space-y-5">
-          {quiz.map((q, qi) => {
+          {sampled.map((q, qi) => {
             const r = result.results[qi];
             const my = answers[qi];
             return (
-              <li
-                key={qi}
-                className="rise rounded-xl border border-line-soft bg-paper-raised p-5"
-                style={{ animationDelay: `${qi * 70}ms` }}
-              >
+              <li key={qi} className="rise rounded-xl border border-line-soft bg-paper-raised p-5" style={{ animationDelay: `${qi * 70}ms` }}>
                 <p className="flex gap-2 font-medium leading-snug">
                   <span aria-hidden>{r.correct ? "✓" : "✕"}</span>
                   <span className={r.correct ? "text-good" : "text-bad"}>
@@ -129,25 +163,17 @@ export function Quiz({
     );
   }
 
+  // ---- quiz phase ----
   return (
     <div className="fade max-w-xl">
       <div className="flex items-center justify-between">
         <p className="font-mono text-xs text-ink-faint">
-          Question {index + 1} of {quiz.length}
+          Question {index + 1} of {selected.length}
         </p>
-        {attempts.length > 0 && (
-          <p className="font-mono text-xs text-ink-faint">
-            best {best}/{quiz.length} · {attempts.length}{" "}
-            {attempts.length === 1 ? "attempt" : "attempts"}
-          </p>
-        )}
       </div>
 
       <div className="mt-2 h-1 rounded-full bg-line-soft overflow-hidden">
-        <div
-          className="h-full bg-accent rounded-full transition-[width] duration-500"
-          style={{ width: `${(index / quiz.length) * 100}%` }}
-        />
+        <div className="h-full bg-accent rounded-full transition-[width] duration-500" style={{ width: `${(index / selected.length) * 100}%` }} />
       </div>
 
       <div key={index} className="slide-in mt-8">
@@ -178,15 +204,9 @@ export function Quiz({
                     : "border-line bg-paper-raised hover:border-accent hover:-translate-y-px"
                 }`}
               >
-                <span
-                  className={`mt-0.5 font-mono text-xs shrink-0 size-5 inline-flex items-center justify-center rounded border ${
-                    revealed && isCorrect
-                      ? "border-good text-good"
-                      : revealed && isPicked
-                      ? "border-bad text-bad"
-                      : "border-line text-ink-faint"
-                  }`}
-                >
+                <span className={`mt-0.5 font-mono text-xs shrink-0 size-5 inline-flex items-center justify-center rounded border ${
+                    revealed && isCorrect ? "border-good text-good" : revealed && isPicked ? "border-bad text-bad" : "border-line text-ink-faint"
+                  }`}>
                   {LETTERS[ci]}
                 </span>
                 <span className="leading-snug"><MathText>{choice}</MathText></span>
@@ -201,9 +221,7 @@ export function Quiz({
               {picked === question.answerIndex ? (
                 <span className="text-good">Correct.</span>
               ) : (
-                <span className="text-bad">
-                  Not quite — it&apos;s {LETTERS[question.answerIndex]}.
-                </span>
+                <span className="text-bad">Not quite — it&apos;s {LETTERS[question.answerIndex]}.</span>
               )}
             </p>
             <p className="mt-1 text-sm text-ink-soft leading-relaxed">
@@ -215,11 +233,7 @@ export function Quiz({
               disabled={grading}
               className="mt-4 rounded-full bg-accent text-accent-ink px-5 py-2 text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
             >
-              {grading
-                ? "Scoring…"
-                : index + 1 < quiz.length
-                ? "Next question →"
-                : "See my score"}
+              {grading ? "Scoring…" : index + 1 < selected.length ? "Next question →" : "See my score"}
             </button>
           </div>
         )}

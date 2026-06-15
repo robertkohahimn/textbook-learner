@@ -60,9 +60,20 @@ export interface DeckMeta extends DeckOptions {
 }
 
 export const DEFAULT_DECK_OPTIONS: DeckOptions = {
-  format: "presenter",
-  length: "default",
+  format: "detailed",
+  length: "long",
 };
+
+/**
+ * Who the materials are written for. Until there's a user/auth module to read a
+ * real learner profile, every deck is pitched at this default level — swap this
+ * out (or thread a per-user value through DeckOptions) once profiles exist.
+ */
+export const DEFAULT_AUDIENCE_LEVEL =
+  "a first-year university student — capable and motivated, but new to this subject. " +
+  "Assume only a general high-school background, introduce and briefly define specialised " +
+  "terms the first time they appear, and pitch the depth accordingly: thorough and rigorous, " +
+  "but neither oversimplified nor graduate-level.";
 
 const MAX_SOURCE_CHARS = 28_000;
 const MAX_REVISE_SOURCE_CHARS = 14_000;
@@ -299,9 +310,11 @@ Every slide MUST include:
 
 ${MATH_INSTRUCTION}
 
-${formatRules(options.format)}${
+${formatRules(options.format)}
+
+LEARNER — pitch every slide for ${DEFAULT_AUDIENCE_LEVEL}${
     options.focus
-      ? `\n\nAUDIENCE & FOCUS (from the learner — honor this throughout):\n${options.focus}`
+      ? `\n\nADDITIONAL FOCUS (from the learner — honor this throughout):\n${options.focus}`
       : ""
   }`;
 }
@@ -371,6 +384,7 @@ Rewrite this one slide following the instruction. You may change its layout if t
 - "process": { "layout": "process", "title", "steps": [{ "label", "detail" }, ... 2-6 steps], "notes", "pages" }
 
 Keep "notes" (speaker notes, 2-4 spoken sentences) and "pages" (source page numbers from the [p.N] markers) accurate for the revised content.
+Keep the slide pitched for ${DEFAULT_AUDIENCE_LEVEL}
 
 ${MATH_INSTRUCTION}
 

@@ -140,7 +140,7 @@ describe("db", () => {
     expect(db.getMaterials(lessonId)).toEqual(materials);
     expect(db.getDeckMeta(lessonId)?.format).toBe("presenter");
 
-    db.insertQuizAttempt(lessonId, 1, 1, [2]);
+    db.insertQuizAttempt(lessonId, 1, 1, [2], [0]);
     expect(db.getQuizAttempts(lessonId)[0]).toMatchObject({ score: 1, total: 1 });
 
     db.insertTutorMessage(lessonId, "user", "hi");
@@ -202,5 +202,22 @@ describe("db", () => {
     expect(db.getBook(id)).toBeUndefined();
     expect(db.getLesson(lessonId)).toBeUndefined();
     expect(db.getPagesText(id, 1, 1)).toBe("");
+  });
+});
+
+describe("quiz attempts store selected pool indices", () => {
+  it("round-trips question_indexes as JSON", () => {
+    const bookId = db.newId();
+    db.insertBook({ id: bookId, title: "Quiz Book", author: null, filename: "q.pdf" });
+    db.insertCurriculum(bookId, [
+      { title: "M1", description: "", lessons: [{ title: "L", summary: "", pageStart: 1, pageEnd: 2 }] },
+    ]);
+    const lessonId = db.getCurriculum(bookId)[0].lessons[0].id;
+
+    db.insertQuizAttempt(lessonId, 2, 3, [1, 0, -1], [4, 1, 7]);
+    const [row] = db.getQuizAttempts(lessonId);
+    expect(row.total).toBe(3);
+    expect(JSON.parse(row.answers)).toEqual([1, 0, -1]);
+    expect(JSON.parse(row.question_indexes as string)).toEqual([4, 1, 7]);
   });
 });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as db from "@/lib/db";
+import { gradeAttempt } from "@/lib/quiz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,22 +13,43 @@ export async function POST(req: Request, { params }: Params) {
   if (!materials) {
     return NextResponse.json({ error: "Quiz not ready yet" }, { status: 409 });
   }
-  const body = (await req.json().catch(() => ({}))) as { answers?: number[] };
+
+  const body = (await req.json().catch(() => ({}))) as {
+    questions?: unknown;
+    answers?: unknown;
+  };
+  const questions = body.questions;
   const answers = body.answers;
-  if (!Array.isArray(answers) || answers.length !== materials.quiz.length) {
+  if (
+    !Array.isArray(questions) ||
+    !Array.isArray(answers) ||
+    !questions.every((q) => typeof q === "number") ||
+    !answers.every((a) => typeof a === "number")
+  ) {
     return NextResponse.json(
-      { error: `Expected ${materials.quiz.length} answers` },
+      { error: "Expected numeric questions[] and answers[]" },
       { status: 400 }
     );
   }
 
-  const results = materials.quiz.map((q, i) => ({
-    correct: answers[i] === q.answerIndex,
-    answerIndex: q.answerIndex,
-    explanation: q.explanation,
-  }));
-  const score = results.filter((r) => r.correct).length;
-  db.insertQuizAttempt(lessonId, score, materials.quiz.length, answers);
+  let graded;
+  try {
+    graded = gradeAttempt(materials.quiz, questions as number[], answers as number[]);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 400 });
+  }
 
-  return NextResponse.json({ score, total: materials.quiz.length, results });
+  db.insertQuizAttempt(
+    lessonId,
+    graded.score,
+    graded.total,
+    answers as number[],
+    questions as number[]
+  );
+
+  return NextResponse.json({
+    score: graded.score,
+    total: graded.total,
+    results: graded.results,
+  });
 }
