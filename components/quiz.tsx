@@ -94,7 +94,7 @@ export function Quiz({
               </button>
             ))}
           </div>
-          {best && (
+          {best && best.total > 0 && (
             <p className="mt-6 font-mono text-xs text-ink-faint">
               best {best.score}/{best.total} ({Math.round((best.score / best.total) * 100)}%) ·{" "}
               {attempts.length} {attempts.length === 1 ? "attempt" : "attempts"}
