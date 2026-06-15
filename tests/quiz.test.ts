@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { wilsonLowerBound, bestAttempt } from "@/lib/quiz";
 import { quizCountPresets, selectQuestions, validateQuiz } from "@/lib/quiz";
 import { gradeAttempt } from "@/lib/quiz";
+import { buildQuizPrompt } from "@/lib/quiz";
 import type { QuizQuestion } from "@/lib/db";
 
 // Deterministic RNG for reproducible selection tests.
@@ -195,5 +196,19 @@ describe("gradeAttempt", () => {
 
   it("throws on empty submission", () => {
     expect(() => gradeAttempt(pool, [], [])).toThrow();
+  });
+});
+
+describe("buildQuizPrompt", () => {
+  it("includes source, concept field, level, and the JSON schema", () => {
+    const p = buildQuizPrompt(
+      { title: "Spin", summary: "first quantum surprise" },
+      "[p.12] Spin is measured along an axis."
+    );
+    expect(p).toContain("[p.12] Spin is measured");
+    expect(p).toContain('"concept"');
+    expect(p).toContain("first-year university student"); // DEFAULT_AUDIENCE_LEVEL
+    expect(p).toContain("COVER THE WHOLE SECTION");
+    expect(p).toContain('{ "quiz":');
   });
 });

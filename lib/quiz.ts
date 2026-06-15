@@ -1,4 +1,6 @@
 import type { QuizQuestion } from "./db";
+import { DEFAULT_AUDIENCE_LEVEL } from "./deck";
+import { MATH_INSTRUCTION } from "./math";
 
 /** Wilson score interval lower bound of accuracy (z=1.96 ≈ 95%). total=0 -> 0. */
 export function wilsonLowerBound(correct: number, total: number, z = 1.96): number {
@@ -146,6 +148,42 @@ export function gradeAttempt(
     total: questions.length,
     results,
   };
+}
+
+const MAX_QUIZ_SOURCE_CHARS = 28_000;
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) + "\n[...truncated]" : text;
+}
+
+export function buildQuizPrompt(
+  lesson: { title: string; summary: string | null },
+  lessonText: string
+): string {
+  return `You are an expert teacher writing a quiz question bank for one lesson.
+
+LESSON: "${lesson.title}"${lesson.summary ? ` — ${lesson.summary}` : ""}
+
+SOURCE TEXT (from the book, this lesson's pages, with [p.N] page markers):
+---
+${truncate(lessonText, MAX_QUIZ_SOURCE_CHARS)}
+---
+
+Write a POOL of multiple-choice questions grounded ONLY in the source text that together COVER THE WHOLE SECTION — roughly one or two questions per distinct concept. Aim for 8 to 30 questions depending on how much the section covers; do not pad with trivia.
+
+Each question is an object with:
+- "concept": a short label (2-4 words) for the idea it tests, so related questions can be grouped.
+- "question": the question stem.
+- "choices": exactly 4 plausible options (strings).
+- "answerIndex": the 0-based index of the correct choice.
+- "explanation": 1-2 sentences on why that answer is correct.
+
+Test understanding, not recall of trivia. ${MATH_INSTRUCTION}
+
+LEARNER — pitch every question for ${DEFAULT_AUDIENCE_LEVEL}
+
+Output ONLY this JSON, no other text:
+{ "quiz": [ { "concept": "...", "question": "...", "choices": ["...", "...", "...", "..."], "answerIndex": 0, "explanation": "..." } ] }`;
 }
 
 const QUIZ_HARD_MIN = 3;
