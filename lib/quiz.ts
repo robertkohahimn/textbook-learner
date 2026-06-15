@@ -88,3 +88,53 @@ export function selectQuestions(
   }
   return shuffle(picked, rng);
 }
+
+const QUIZ_HARD_MIN = 3;
+const QUIZ_MAX = 30;
+
+function quizFail(message: string): never {
+  throw new Error(`Quiz invalid: ${message}`);
+}
+
+/**
+ * Validate a freshly generated quiz pool. The 8-question target is enforced only
+ * in the prompt; here the hard floor stays low (3) so sparse sections don't error,
+ * and oversized pools are truncated rather than rejected.
+ */
+export function validateQuiz(raw: unknown): QuizQuestion[] {
+  if (!Array.isArray(raw)) quizFail("expected an array of questions");
+  if (raw.length < QUIZ_HARD_MIN)
+    quizFail(`need at least ${QUIZ_HARD_MIN} questions`);
+  return raw.slice(0, QUIZ_MAX).map((item, i) => {
+    const o = (typeof item === "object" && item !== null ? item : {}) as Record<
+      string,
+      unknown
+    >;
+    const question = typeof o.question === "string" ? o.question.trim() : "";
+    if (!question) quizFail(`question ${i} text missing`);
+    const concept = typeof o.concept === "string" ? o.concept.trim() : "";
+    if (!concept) quizFail(`question ${i} concept missing`);
+    const choices = o.choices;
+    if (
+      !Array.isArray(choices) ||
+      choices.length < 2 ||
+      !choices.every((c) => typeof c === "string")
+    )
+      quizFail(`question ${i} needs 2+ string choices`);
+    const answerIndex = o.answerIndex;
+    if (
+      typeof answerIndex !== "number" ||
+      !Number.isInteger(answerIndex) ||
+      answerIndex < 0 ||
+      answerIndex >= (choices as string[]).length
+    )
+      quizFail(`question ${i} answerIndex out of range`);
+    return {
+      concept,
+      question,
+      choices: (choices as string[]).map((c) => c.trim()),
+      answerIndex,
+      explanation: typeof o.explanation === "string" ? o.explanation.trim() : "",
+    };
+  });
+}

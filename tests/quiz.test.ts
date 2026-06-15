@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { wilsonLowerBound, bestAttempt } from "@/lib/quiz";
-import { quizCountPresets, selectQuestions } from "@/lib/quiz";
+import { quizCountPresets, selectQuestions, validateQuiz } from "@/lib/quiz";
 import type { QuizQuestion } from "@/lib/db";
 
 // Deterministic RNG for reproducible selection tests.
@@ -110,5 +110,48 @@ describe("bestAttempt", () => {
   it("prefers the higher Wilson lower bound, not the higher raw percentage", () => {
     expect(bestAttempt([{ score: 5, total: 5 }, { score: 18, total: 20 }])).toBe(1);
     expect(bestAttempt([{ score: 10, total: 10 }, { score: 18, total: 20 }])).toBe(0);
+  });
+});
+
+const q = (over: Partial<QuizQuestion> = {}): Record<string, unknown> => ({
+  concept: "Spin",
+  question: "How many outcomes?",
+  choices: ["One", "Two", "Three", "Four"],
+  answerIndex: 1,
+  explanation: "Binary.",
+  ...over,
+});
+
+describe("validateQuiz", () => {
+  it("accepts a valid pool and trims strings", () => {
+    const out = validateQuiz([q(), q(), q()]);
+    expect(out).toHaveLength(3);
+    expect(out[0].concept).toBe("Spin");
+    expect(out[0].answerIndex).toBe(1);
+  });
+
+  it("rejects fewer than 3 questions", () => {
+    expect(() => validateQuiz([q(), q()])).toThrow();
+  });
+
+  it("truncates pools larger than 30", () => {
+    const big = Array.from({ length: 35 }, () => q());
+    expect(validateQuiz(big)).toHaveLength(30);
+  });
+
+  it("requires a concept on every question", () => {
+    expect(() => validateQuiz([q(), q(), q({ concept: "" })])).toThrow(/concept/);
+  });
+
+  it("rejects an out-of-range answerIndex", () => {
+    expect(() => validateQuiz([q(), q(), q({ answerIndex: 9 })])).toThrow();
+  });
+
+  it("rejects fewer than 2 choices", () => {
+    expect(() => validateQuiz([q(), q(), q({ choices: ["only"] })])).toThrow();
+  });
+
+  it("rejects non-array input", () => {
+    expect(() => validateQuiz("nope")).toThrow();
   });
 });
