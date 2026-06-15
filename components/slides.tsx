@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   formatPageRefs,
   type DeckFormat,
@@ -430,6 +430,68 @@ export function Slides({
 
 /* ---------- the slide surface ---------- */
 
+// useLayoutEffect on the client, useEffect on the server — measuring before
+// paint avoids a one-frame flash of overflowing content, without the SSR warning.
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+/**
+ * Shrink a slide's content so it never overflows the fixed 16:9 stage.
+ *
+ * Type is sized in cqw (container-width) units, but the stage height is locked
+ * to width × 9/16 — so a slide with more text than fits would otherwise be
+ * clipped at the bottom. We measure the content's natural height against the
+ * available height and scale it down uniformly to fit, the way presentation
+ * tools autofit text. The ratio is width-independent (both heights scale with
+ * the container), so the same slide fits identically as a thumbnail, inline,
+ * and fullscreen.
+ */
+function Fit({ children }: { children: React.ReactNode }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useIsoLayoutEffect(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    if (!box || !content) return;
+
+    const measure = () => {
+      const available = box.clientHeight;
+      // offsetHeight is the natural, pre-transform height — scale() never
+      // changes it, so the measurement stays stable as we re-render.
+      const natural = content.offsetHeight;
+      if (available === 0 || natural === 0) return; // hidden (e.g. print clone)
+      const next = Math.min(1, available / natural);
+      setScale((prev) => (Math.abs(prev - next) > 0.005 ? next : prev));
+    };
+
+    measure();
+    // Re-fit when the stage resizes (responsive, grid, fullscreen) or the
+    // content reflows (fonts, async KaTeX math).
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div className="flex flex-1 flex-col justify-center overflow-hidden" ref={boxRef}>
+      <div
+        ref={contentRef}
+        className="flex flex-col"
+        style={
+          scale < 1
+            ? { transform: `scale(${scale})`, transformOrigin: "center center" }
+            : undefined
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function Stage({
   slide,
   index,
@@ -456,7 +518,9 @@ function Stage({
         aria-hidden
         className="absolute top-0 left-[6cqw] right-[6cqw] h-[0.45cqw] min-h-[2px] rounded-b bg-accent"
       />
-      <SlideBody slide={slide} highlights={highlights} onPick={onPick} />
+      <Fit>
+        <SlideBody slide={slide} highlights={highlights} onPick={onPick} />
+      </Fit>
       <div className="absolute bottom-[3cqw] left-[6cqw] right-[6cqw] flex items-end justify-between">
         {slide.pages?.length ? (
           <span className="font-mono text-[1.5cqw] text-ink-faint">
