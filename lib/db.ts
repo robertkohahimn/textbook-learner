@@ -69,6 +69,8 @@ export interface QuizQuestion {
   choices: string[];
   answerIndex: number;
   explanation: string;
+  /** Short topic label used for stratified sampling. Optional for back-compat. */
+  concept?: string;
 }
 export interface LessonMaterials {
   slides: Slide[];
@@ -82,6 +84,8 @@ export interface QuizAttemptRow {
   score: number;
   total: number;
   answers: string;
+  /** JSON number[] of pool indices asked, in order. NULL for legacy full-quiz attempts. */
+  question_indexes: string | null;
   created_at: string;
 }
 
@@ -182,6 +186,11 @@ function migrate(db: Database.Database): void {
   const cols = db.pragma("table_info(materials)") as { name: string }[];
   if (!cols.some((c) => c.name === "slides_meta")) {
     db.exec(`ALTER TABLE materials ADD COLUMN slides_meta TEXT`);
+  }
+
+  const attemptCols = db.pragma("table_info(quiz_attempts)") as { name: string }[];
+  if (!attemptCols.some((c) => c.name === "question_indexes")) {
+    db.exec(`ALTER TABLE quiz_attempts ADD COLUMN question_indexes TEXT`);
   }
 }
 
@@ -406,13 +415,22 @@ export function insertQuizAttempt(
   lessonId: string,
   score: number,
   total: number,
-  answers: number[]
+  answers: number[],
+  questionIndexes: number[]
 ): void {
   getDb()
     .prepare(
-      `INSERT INTO quiz_attempts (id, lesson_id, score, total, answers) VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO quiz_attempts (id, lesson_id, score, total, answers, question_indexes)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(newId(), lessonId, score, total, JSON.stringify(answers));
+    .run(
+      newId(),
+      lessonId,
+      score,
+      total,
+      JSON.stringify(answers),
+      JSON.stringify(questionIndexes)
+    );
 }
 
 export function getQuizAttempts(lessonId: string): QuizAttemptRow[] {
