@@ -1,5 +1,93 @@
 import { describe, expect, it } from "vitest";
 import { wilsonLowerBound, bestAttempt } from "@/lib/quiz";
+import { quizCountPresets, selectQuestions } from "@/lib/quiz";
+import type { QuizQuestion } from "@/lib/db";
+
+// Deterministic RNG for reproducible selection tests.
+function mulberry32(seed: number): () => number {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makePool(concepts: string[]): QuizQuestion[] {
+  return concepts.map((c, i) => ({
+    question: `q${i}`,
+    choices: ["a", "b", "c", "d"],
+    answerIndex: 0,
+    explanation: "",
+    concept: c,
+  }));
+}
+
+describe("quizCountPresets", () => {
+  it("offers presets below the pool size plus All, defaulting to 10", () => {
+    expect(quizCountPresets(24)).toEqual({
+      options: [
+        { label: "5", value: 5 },
+        { label: "10", value: 10 },
+        { label: "20", value: 20 },
+        { label: "All (24)", value: 24 },
+      ],
+      defaultValue: 10,
+    });
+  });
+
+  it("collapses to just All when the pool is small, defaulting to the pool size", () => {
+    expect(quizCountPresets(5)).toEqual({
+      options: [{ label: "All (5)", value: 5 }],
+      defaultValue: 5,
+    });
+    expect(quizCountPresets(8).defaultValue).toBe(8);
+    expect(quizCountPresets(8).options).toEqual([
+      { label: "5", value: 5 },
+      { label: "All (8)", value: 8 },
+    ]);
+  });
+});
+
+describe("selectQuestions", () => {
+  const pool = makePool([
+    "A", "A", "A", "B", "B", "B", "C", "C", "C", // 9 questions, 3 concepts
+  ]);
+
+  it("returns the requested count, in range, with no duplicates", () => {
+    const picked = selectQuestions(pool, 5, mulberry32(1));
+    expect(picked).toHaveLength(5);
+    expect(new Set(picked).size).toBe(5);
+    for (const i of picked) expect(i).toBeGreaterThanOrEqual(0);
+    for (const i of picked) expect(i).toBeLessThan(pool.length);
+  });
+
+  it("clamps the count to the pool size and returns a permutation when count >= pool", () => {
+    const picked = selectQuestions(pool, 99, mulberry32(2));
+    expect([...picked].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("spreads across concepts first (3 picks -> 3 distinct concepts)", () => {
+    const picked = selectQuestions(pool, 3, mulberry32(3));
+    const concepts = new Set(picked.map((i) => pool[i].concept));
+    expect(concepts.size).toBe(3);
+  });
+
+  it("handles a pool with no concepts (legacy) without throwing", () => {
+    const legacy: QuizQuestion[] = [0, 1, 2, 3].map((i) => ({
+      question: `q${i}`, choices: ["a", "b"], answerIndex: 0, explanation: "",
+    }));
+    const picked = selectQuestions(legacy, 2, mulberry32(4));
+    expect(picked).toHaveLength(2);
+    expect(new Set(picked).size).toBe(2);
+  });
+
+  it("returns [] for an empty pool", () => {
+    expect(selectQuestions([], 5, mulberry32(5))).toEqual([]);
+  });
+});
 
 describe("wilsonLowerBound", () => {
   it("returns 0 for no attempts", () => {
