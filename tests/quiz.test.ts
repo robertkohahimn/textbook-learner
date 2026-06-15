@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { wilsonLowerBound, bestAttempt } from "@/lib/quiz";
 import { quizCountPresets, selectQuestions, validateQuiz } from "@/lib/quiz";
+import { gradeAttempt } from "@/lib/quiz";
 import type { QuizQuestion } from "@/lib/db";
 
 // Deterministic RNG for reproducible selection tests.
@@ -153,5 +154,46 @@ describe("validateQuiz", () => {
 
   it("rejects non-array input", () => {
     expect(() => validateQuiz("nope")).toThrow();
+  });
+});
+
+describe("gradeAttempt", () => {
+  const pool = [
+    q({ answerIndex: 1 }),
+    q({ answerIndex: 2 }),
+    q({ answerIndex: 0 }),
+  ].map((o) => validateQuiz([o, q(), q()])[0]); // each becomes a valid QuizQuestion
+
+  it("scores a subset in the asked order", () => {
+    const out = gradeAttempt(pool, [2, 0], [0, 1]); // q2 correct(0), q0 correct(1)
+    expect(out.total).toBe(2);
+    expect(out.score).toBe(2);
+    expect(out.results[0]).toEqual({ correct: true, answerIndex: 0, explanation: "Binary." });
+  });
+
+  it("counts a skipped answer (-1) as incorrect", () => {
+    const out = gradeAttempt(pool, [0], [-1]);
+    expect(out.score).toBe(0);
+    expect(out.results[0].correct).toBe(false);
+  });
+
+  it("throws on length mismatch", () => {
+    expect(() => gradeAttempt(pool, [0, 1], [0])).toThrow();
+  });
+
+  it("throws on duplicate question index", () => {
+    expect(() => gradeAttempt(pool, [0, 0], [0, 0])).toThrow(/duplicate/);
+  });
+
+  it("throws on out-of-range question index", () => {
+    expect(() => gradeAttempt(pool, [99], [0])).toThrow();
+  });
+
+  it("throws on out-of-range answer", () => {
+    expect(() => gradeAttempt(pool, [0], [9])).toThrow();
+  });
+
+  it("throws on empty submission", () => {
+    expect(() => gradeAttempt(pool, [], [])).toThrow();
   });
 });

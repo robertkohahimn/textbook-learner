@@ -89,6 +89,65 @@ export function selectQuestions(
   return shuffle(picked, rng);
 }
 
+export interface GradedResult {
+  correct: boolean;
+  answerIndex: number;
+  explanation: string;
+}
+
+export interface GradedAttempt {
+  score: number;
+  total: number;
+  results: GradedResult[];
+}
+
+/**
+ * Grade a subset of the pool. `questions` are pool indices in asked order;
+ * `answers` are the picked choice indices (-1 = skipped). Throws on any malformed
+ * input so callers can map the error to a 400 before indexing the pool.
+ */
+export function gradeAttempt(
+  pool: QuizQuestion[],
+  questions: number[],
+  answers: number[]
+): GradedAttempt {
+  if (!Array.isArray(questions) || !Array.isArray(answers))
+    throw new Error("questions and answers must be arrays");
+  if (questions.length === 0) throw new Error("no questions submitted");
+  if (questions.length !== answers.length)
+    throw new Error("questions and answers length mismatch");
+
+  const seen = new Set<number>();
+  for (const qi of questions) {
+    if (!Number.isInteger(qi) || qi < 0 || qi >= pool.length)
+      throw new Error("question index out of range");
+    if (seen.has(qi)) throw new Error("duplicate question index");
+    seen.add(qi);
+  }
+
+  const results = questions.map((qi, i) => {
+    const question = pool[qi];
+    const answer = answers[i];
+    if (
+      !Number.isInteger(answer) ||
+      answer < -1 ||
+      answer >= question.choices.length
+    )
+      throw new Error("answer out of range");
+    return {
+      correct: answer === question.answerIndex,
+      answerIndex: question.answerIndex,
+      explanation: question.explanation,
+    };
+  });
+
+  return {
+    score: results.filter((r) => r.correct).length,
+    total: questions.length,
+    results,
+  };
+}
+
 const QUIZ_HARD_MIN = 3;
 const QUIZ_MAX = 30;
 
