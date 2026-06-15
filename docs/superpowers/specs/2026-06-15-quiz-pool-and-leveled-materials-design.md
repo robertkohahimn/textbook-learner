@@ -105,7 +105,14 @@ matching today. `lib/jobs.ts` is unchanged.
 - `validateMaterials` is split: `validateLessonContent` validates `{ slides, takeaways }`
   only.
 
-### 4.2 Call B — quiz pool (lib/quiz.ts)
+> Module split for client-safety: `lib/quiz.ts` holds only **pure** logic (`buildQuizPrompt`,
+> `validateQuiz`, `gradeAttempt`, `selectQuestions`, `wilsonLowerBound`, `bestAttempt`,
+> `quizCountPresets`) so the quiz component can import the selection/scoring helpers. The
+> LLM-calling `generateQuiz` lives in `lib/materials.ts` (server-only, next to
+> `generateMaterials`), since importing `getLlm` into a client-imported module would pull
+> Node-only providers into the browser bundle.
+
+### 4.2 Call B — quiz pool (`buildQuizPrompt`/`validateQuiz` in lib/quiz.ts; `generateQuiz` in lib/materials.ts)
 
 - `buildQuizPrompt(lesson, lessonText)`: grounded only in the source text; applies
   `MATH_INSTRUCTION` and `DEFAULT_AUDIENCE_LEVEL`. Instruction:
@@ -207,8 +214,9 @@ New request contract: `{ questions: number[], answers: number[] }`.
   `answers.length === questions.length`, each in `[-1, choices.length)` for its question
   (`-1` = skipped → incorrect).
 - The old `answers.length !== materials.quiz.length` check is **removed**.
-- Grade: `correct = answers[i] === materials.quiz[questions[i]].answerIndex`;
-  `score = #correct`; `total = questions.length`.
+- Grade via the pure `gradeAttempt(pool, questions, answers)` (lib/quiz.ts), which performs
+  the validation above and returns `{ score, total, results }`. The route is a thin wrapper:
+  it catches `gradeAttempt`'s errors as HTTP 400.
 - Persist: `insertQuizAttempt(lessonId, score, total, answers, questions)`.
 - Response unchanged in shape: `{ score, total, results: [{ correct, answerIndex, explanation }] }`
   aligned to asked order.
@@ -242,8 +250,8 @@ interval stops.
 - `lib/db.ts` — `QuizQuestion.concept?`; `quiz_attempts.question_indexes` column +
   migration; `QuizAttemptRow.question_indexes`; `insertQuizAttempt` signature.
 - `lib/materials.ts` — drop quiz from prompt/validation; level takeaways; split into
-  `generateLessonContent` + orchestrating `generateMaterials`.
-- `lib/quiz.ts` (new) — `buildQuizPrompt`, `validateQuiz`, `generateQuiz`,
+  `generateLessonContent` + orchestrating `generateMaterials`; add server-only `generateQuiz`.
+- `lib/quiz.ts` (new, pure/client-safe) — `buildQuizPrompt`, `validateQuiz`, `gradeAttempt`,
   `selectQuestions`, `wilsonLowerBound`, `bestAttempt`, `quizCountPresets`.
 - `app/api/lessons/[lessonId]/quiz/route.ts` — new contract, exhaustive validation, subset
   grading, store indices.
