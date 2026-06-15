@@ -48,10 +48,13 @@ export function Lesson({ lessonId }: { lessonId: string }) {
     window.history.replaceState(null, "", url);
   }
 
-  const { data, error, refresh } = usePoll<LessonResponse>(
-    `/api/lessons/${lessonId}`,
-    2500,
-    true
+  const poll = usePoll<LessonResponse>(`/api/lessons/${lessonId}`, 2500, true);
+  const { data, error, refresh } = poll;
+  // Materials are immutable once the lesson is ready/errored; the mutation paths
+  // (revise, customize, quiz) call refresh() directly. Stop the interval so the
+  // (now large) materials payload isn't re-fetched every 2.5s for the session.
+  poll.setActive(
+    !data || (data.lesson.status !== "ready" && data.lesson.status !== "error")
   );
 
   const ready = data?.lesson.status === "ready" && data.materials;

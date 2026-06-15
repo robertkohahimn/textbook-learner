@@ -2,15 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * Fetch JSON from `url` immediately, then keep refetching every `intervalMs`
- * while `active` is true. Returns the latest data plus a manual refresh.
- */
-export function usePoll<T>(url: string, intervalMs: number, active: boolean) {
+export function usePoll<T>(url: string, intervalMs: number, initialActive: boolean) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const activeRef = useRef(active);
-  activeRef.current = active;
+  const activeRef = useRef(initialActive);
 
   const refresh = useCallback(async () => {
     try {
@@ -34,5 +29,9 @@ export function usePoll<T>(url: string, intervalMs: number, active: boolean) {
     return () => clearInterval(timer);
   }, [refresh, intervalMs]);
 
-  return { data, error, refresh };
+  const setActive = useCallback((next: boolean) => {
+    activeRef.current = next;
+  }, []);
+
+  return { data, error, refresh, setActive };
 }
