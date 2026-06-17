@@ -3,7 +3,7 @@ import { DEFAULT_DECK_OPTIONS, DEFAULT_AUDIENCE_LEVEL, deckSpec, validateDeck, t
 import { MATH_INSTRUCTION } from "./math";
 import { extractJson } from "./json";
 import { getLlm } from "./llm";
-import { buildQuizPrompt, validateQuiz } from "./quiz";
+import { buildQuizPrompt, validateQuiz, shuffleChoices } from "./quiz";
 
 const MAX_LESSON_CHARS = 28_000;
 
@@ -101,7 +101,9 @@ export async function generateQuiz(
     const raw = await llm.generate(prompt + suffix);
     try {
       const parsed = extractJson(raw) as { quiz?: unknown };
-      return validateQuiz(parsed.quiz);
+      // Shuffle each question's choices so the correct answer is spread across
+      // positions — models tend to emit it first, which made every answer "A".
+      return validateQuiz(parsed.quiz).map((question) => shuffleChoices(question));
     } catch (err) {
       lastError = err as Error;
     }

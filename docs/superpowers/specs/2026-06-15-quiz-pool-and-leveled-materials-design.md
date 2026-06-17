@@ -130,6 +130,13 @@ matching today. `lib/jobs.ts` is unchanged.
   - The prompt asks for *exactly 4* choices, but validation stays lenient at ≥ 2 (matching
     today's `validateMaterials`) to tolerate model variance rather than error the lesson.
 - Two-attempt retry with an error nudge, mirroring `generateMaterials` today.
+- **Choice shuffling (anti-bias):** after validation, `generateQuiz` maps each question through
+  the pure `shuffleChoices(question, rng = Math.random)` (lib/quiz.ts), which permutes the
+  `choices` and re-points `answerIndex` at the same correct option. Models reliably emit the
+  correct option first, which otherwise made every stored answer "A"; shuffling at generation
+  distributes the correct position uniformly regardless of model bias. The prompt also nudges
+  the model to vary the position, but the shuffle is the guarantee. (Only affects newly
+  generated pools; existing stored quizzes keep their order until regenerated.)
 
 ### 4.3 Orchestration
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { wilsonLowerBound, bestAttempt } from "@/lib/quiz";
 import { quizCountPresets, selectQuestions, validateQuiz } from "@/lib/quiz";
 import { gradeAttempt } from "@/lib/quiz";
-import { buildQuizPrompt } from "@/lib/quiz";
+import { buildQuizPrompt, shuffleChoices } from "@/lib/quiz";
 import type { QuizQuestion } from "@/lib/db";
 
 // Deterministic RNG for reproducible selection tests.
@@ -210,5 +210,31 @@ describe("buildQuizPrompt", () => {
     expect(p).toContain("first-year university student"); // DEFAULT_AUDIENCE_LEVEL
     expect(p).toContain("COVER THE WHOLE SECTION");
     expect(p).toContain('{ "quiz":');
+  });
+});
+
+describe("shuffleChoices", () => {
+  // correct answer is the literal "W" at index 0
+  const base = validateQuiz([
+    q({ choices: ["W", "X", "Y", "Z"], answerIndex: 0 }),
+    q(),
+    q(),
+  ])[0];
+
+  it("preserves the correct choice text and the full set of choices", () => {
+    const out = shuffleChoices(base, mulberry32(7));
+    expect(out.choices[out.answerIndex]).toBe("W");
+    expect([...out.choices].sort()).toEqual(["W", "X", "Y", "Z"]);
+    expect(out.question).toBe(base.question);
+    expect(out.concept).toBe(base.concept);
+    expect(out.explanation).toBe(base.explanation);
+  });
+
+  it("does not leave the correct answer stuck at index 0 across seeds", () => {
+    const positions = new Set<number>();
+    for (let s = 0; s < 30; s++) {
+      positions.add(shuffleChoices(base, mulberry32(s)).answerIndex);
+    }
+    expect(positions.size).toBeGreaterThan(1);
   });
 });

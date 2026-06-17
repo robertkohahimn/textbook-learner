@@ -51,6 +51,27 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 }
 
 /**
+ * Randomize the order of a question's choices, keeping `answerIndex` pointed at
+ * the same (correct) choice. Applied at generation time so the correct answer is
+ * uniformly distributed across positions regardless of any model bias toward
+ * always emitting it first.
+ */
+export function shuffleChoices(
+  question: QuizQuestion,
+  rng: () => number = Math.random
+): QuizQuestion {
+  const order = shuffle(
+    question.choices.map((_, i) => i),
+    rng
+  );
+  return {
+    ...question,
+    choices: order.map((i) => question.choices[i]),
+    answerIndex: order.indexOf(question.answerIndex),
+  };
+}
+
+/**
  * Stratified random sample of `count` questions from `pool`. Groups by concept
  * (blank/missing concept => its own singleton stratum) and round-robins across
  * groups, so any count is spread across as many concepts as possible. Returns
@@ -175,7 +196,7 @@ Each question is an object with:
 - "concept": a short label (2-4 words) for the idea it tests, so related questions can be grouped.
 - "question": the question stem.
 - "choices": exactly 4 plausible options (strings).
-- "answerIndex": the 0-based index of the correct choice.
+- "answerIndex": the 0-based index of the correct choice. Vary which position is correct from question to question; do not default to making the first option correct.
 - "explanation": 1-2 sentences on why that answer is correct.
 
 Test understanding, not recall of trivia. ${MATH_INSTRUCTION}
@@ -183,7 +204,7 @@ Test understanding, not recall of trivia. ${MATH_INSTRUCTION}
 LEARNER — pitch every question for ${DEFAULT_AUDIENCE_LEVEL}
 
 Output ONLY this JSON, no other text:
-{ "quiz": [ { "concept": "...", "question": "...", "choices": ["...", "...", "...", "..."], "answerIndex": 0, "explanation": "..." } ] }`;
+{ "quiz": [ { "concept": "...", "question": "...", "choices": ["...", "...", "...", "..."], "answerIndex": 2, "explanation": "..." } ] }`;
 }
 
 const QUIZ_HARD_MIN = 3;
