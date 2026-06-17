@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { wilsonLowerBound, bestAttempt } from "@/lib/quiz";
 import { quizCountPresets, selectQuestions, validateQuiz } from "@/lib/quiz";
 import { gradeAttempt } from "@/lib/quiz";
-import { buildQuizPrompt, shuffleChoices } from "@/lib/quiz";
+import { buildQuizPrompt, shuffledIndices } from "@/lib/quiz";
 import type { QuizQuestion } from "@/lib/db";
 
 // Deterministic RNG for reproducible selection tests.
@@ -213,28 +213,23 @@ describe("buildQuizPrompt", () => {
   });
 });
 
-describe("shuffleChoices", () => {
-  // correct answer is the literal "W" at index 0
-  const base = validateQuiz([
-    q({ choices: ["W", "X", "Y", "Z"], answerIndex: 0 }),
-    q(),
-    q(),
-  ])[0];
-
-  it("preserves the correct choice text and the full set of choices", () => {
-    const out = shuffleChoices(base, mulberry32(7));
-    expect(out.choices[out.answerIndex]).toBe("W");
-    expect([...out.choices].sort()).toEqual(["W", "X", "Y", "Z"]);
-    expect(out.question).toBe(base.question);
-    expect(out.concept).toBe(base.concept);
-    expect(out.explanation).toBe(base.explanation);
+describe("shuffledIndices", () => {
+  it("returns a permutation of 0..length-1", () => {
+    const out = shuffledIndices(4, mulberry32(7));
+    expect([...out].sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
   });
 
-  it("does not leave the correct answer stuck at index 0 across seeds", () => {
+  it("maps a stored answer to a display position that varies across attempts", () => {
+    // Mirrors the component: the correct stored index is 0; its display position
+    // is order.indexOf(0), which must not be pinned to 0 every time.
     const positions = new Set<number>();
     for (let s = 0; s < 30; s++) {
-      positions.add(shuffleChoices(base, mulberry32(s)).answerIndex);
+      positions.add(shuffledIndices(4, mulberry32(s)).indexOf(0));
     }
     expect(positions.size).toBeGreaterThan(1);
+  });
+
+  it("is a no-op shape for a single choice", () => {
+    expect(shuffledIndices(1, mulberry32(1))).toEqual([0]);
   });
 });

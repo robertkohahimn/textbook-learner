@@ -51,24 +51,20 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 }
 
 /**
- * Randomize the order of a question's choices, keeping `answerIndex` pointed at
- * the same (correct) choice. Applied at generation time so the correct answer is
- * uniformly distributed across positions regardless of any model bias toward
- * always emitting it first.
+ * A shuffled permutation of `[0, length)`. The quiz UI uses it to display a
+ * question's choices in a randomized order (fresh per attempt) so the correct
+ * answer isn't always in the same position — models tend to emit it first. The
+ * caller maps the picked display position back through this order to the stored
+ * choice index before grading, so the persisted `answerIndex` is never touched.
  */
-export function shuffleChoices(
-  question: QuizQuestion,
+export function shuffledIndices(
+  length: number,
   rng: () => number = Math.random
-): QuizQuestion {
-  const order = shuffle(
-    question.choices.map((_, i) => i),
+): number[] {
+  return shuffle(
+    Array.from({ length }, (_, i) => i),
     rng
   );
-  return {
-    ...question,
-    choices: order.map((i) => question.choices[i]),
-    answerIndex: order.indexOf(question.answerIndex),
-  };
 }
 
 /**
@@ -196,7 +192,7 @@ Each question is an object with:
 - "concept": a short label (2-4 words) for the idea it tests, so related questions can be grouped.
 - "question": the question stem.
 - "choices": exactly 4 plausible options (strings).
-- "answerIndex": the 0-based index of the correct choice. Vary which position is correct from question to question; do not default to making the first option correct.
+- "answerIndex": the 0-based index of the correct choice.
 - "explanation": 1-2 sentences on why that answer is correct.
 
 Test understanding, not recall of trivia. ${MATH_INSTRUCTION}
@@ -204,7 +200,7 @@ Test understanding, not recall of trivia. ${MATH_INSTRUCTION}
 LEARNER — pitch every question for ${DEFAULT_AUDIENCE_LEVEL}
 
 Output ONLY this JSON, no other text:
-{ "quiz": [ { "concept": "...", "question": "...", "choices": ["...", "...", "...", "..."], "answerIndex": 2, "explanation": "..." } ] }`;
+{ "quiz": [ { "concept": "...", "question": "...", "choices": ["...", "...", "...", "..."], "answerIndex": 0, "explanation": "..." } ] }`;
 }
 
 const QUIZ_HARD_MIN = 3;
