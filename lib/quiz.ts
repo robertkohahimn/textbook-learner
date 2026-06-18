@@ -51,6 +51,23 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 }
 
 /**
+ * A shuffled permutation of `[0, length)`. The quiz UI uses it to display a
+ * question's choices in a randomized order (fresh per attempt) so the correct
+ * answer isn't always in the same position — models tend to emit it first. The
+ * caller maps the picked display position back through this order to the stored
+ * choice index before grading, so the persisted `answerIndex` is never touched.
+ */
+export function shuffledIndices(
+  length: number,
+  rng: () => number = Math.random
+): number[] {
+  return shuffle(
+    Array.from({ length }, (_, i) => i),
+    rng
+  );
+}
+
+/**
  * Stratified random sample of `count` questions from `pool`. Groups by concept
  * (blank/missing concept => its own singleton stratum) and round-robins across
  * groups, so any count is spread across as many concepts as possible. Returns

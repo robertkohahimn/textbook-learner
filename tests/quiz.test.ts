@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { wilsonLowerBound, bestAttempt } from "@/lib/quiz";
 import { quizCountPresets, selectQuestions, validateQuiz } from "@/lib/quiz";
 import { gradeAttempt } from "@/lib/quiz";
-import { buildQuizPrompt } from "@/lib/quiz";
+import { buildQuizPrompt, shuffledIndices } from "@/lib/quiz";
 import type { QuizQuestion } from "@/lib/db";
 
 // Deterministic RNG for reproducible selection tests.
@@ -210,5 +210,26 @@ describe("buildQuizPrompt", () => {
     expect(p).toContain("first-year university student"); // DEFAULT_AUDIENCE_LEVEL
     expect(p).toContain("COVER THE WHOLE SECTION");
     expect(p).toContain('{ "quiz":');
+  });
+});
+
+describe("shuffledIndices", () => {
+  it("returns a permutation of 0..length-1", () => {
+    const out = shuffledIndices(4, mulberry32(7));
+    expect([...out].sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("maps a stored answer to a display position that varies across attempts", () => {
+    // Mirrors the component: the correct stored index is 0; its display position
+    // is order.indexOf(0), which must not be pinned to 0 every time.
+    const positions = new Set<number>();
+    for (let s = 0; s < 30; s++) {
+      positions.add(shuffledIndices(4, mulberry32(s)).indexOf(0));
+    }
+    expect(positions.size).toBeGreaterThan(1);
+  });
+
+  it("is a no-op shape for a single choice", () => {
+    expect(shuffledIndices(1, mulberry32(1))).toEqual([0]);
   });
 });

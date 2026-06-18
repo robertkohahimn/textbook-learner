@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { QuizAttemptRow, QuizQuestion } from "@/lib/db";
-import { bestAttempt, quizCountPresets, selectQuestions } from "@/lib/quiz";
+import { bestAttempt, quizCountPresets, selectQuestions, shuffledIndices } from "@/lib/quiz";
 import { MathText } from "./math-text";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
@@ -27,6 +27,10 @@ export function Quiz({
   const presets = quizCountPresets(quiz.length);
   const [phase, setPhase] = useState<"setup" | "quiz">("setup");
   const [selected, setSelected] = useState<number[]>([]);
+  // Per-question display order of choices (a permutation of choice indices),
+  // aligned with `selected`. The picked display position is mapped back through
+  // this to the stored choice index before grading.
+  const [orders, setOrders] = useState<number[][]>([]);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
@@ -40,7 +44,11 @@ export function Quiz({
   const best = bestIdx === null ? null : attempts[bestIdx];
 
   function start(count: number) {
-    setSelected(selectQuestions(quiz, count));
+    const picks = selectQuestions(quiz, count);
+    setSelected(picks);
+    // Shuffle each question's choices for display (fresh each attempt) so the
+    // correct answer isn't always option A.
+    setOrders(picks.map((i) => shuffledIndices(quiz[i].choices.length)));
     setIndex(0);
     setAnswers([]);
     setPicked(null);
@@ -49,7 +57,9 @@ export function Quiz({
   }
 
   async function next() {
-    const finalAnswers = [...answers, picked ?? -1];
+    // `picked` is a display position; map it back to the stored choice index.
+    const order = orders[index] ?? question.choices.map((_, i) => i);
+    const finalAnswers = [...answers, picked === null ? -1 : order[picked]];
     setAnswers(finalAnswers);
     setPicked(null);
     if (index + 1 < selected.length) {
@@ -164,6 +174,10 @@ export function Quiz({
   }
 
   // ---- quiz phase ----
+  // Choices are shown in a shuffled order; `picked`/`correctDisplay` are display
+  // positions, mapped back to stored indices via `order` when grading.
+  const order = orders[index] ?? question.choices.map((_, i) => i);
+  const correctDisplay = order.indexOf(question.answerIndex);
   return (
     <div className="fade max-w-xl">
       <div className="flex items-center justify-between">
@@ -182,18 +196,18 @@ export function Quiz({
         </h2>
 
         <div className="mt-6 space-y-2.5" role="radiogroup" aria-label="Answers">
-          {question.choices.map((choice, ci) => {
-            const isPicked = picked === ci;
-            const isCorrect = ci === question.answerIndex;
+          {order.map((origIdx, d) => {
+            const isPicked = picked === d;
+            const isCorrect = d === correctDisplay;
             const revealed = picked !== null;
             return (
               <button
-                key={ci}
+                key={d}
                 type="button"
                 role="radio"
                 aria-checked={isPicked}
                 disabled={revealed}
-                onClick={() => setPicked(ci)}
+                onClick={() => setPicked(d)}
                 className={`w-full flex items-start gap-3 rounded-xl border px-4 py-3.5 text-left transition-all duration-200 cursor-pointer disabled:cursor-default ${
                   revealed && isCorrect
                     ? "border-good bg-good/10"
@@ -207,9 +221,9 @@ export function Quiz({
                 <span className={`mt-0.5 font-mono text-xs shrink-0 size-5 inline-flex items-center justify-center rounded border ${
                     revealed && isCorrect ? "border-good text-good" : revealed && isPicked ? "border-bad text-bad" : "border-line text-ink-faint"
                   }`}>
-                  {LETTERS[ci]}
+                  {LETTERS[d]}
                 </span>
-                <span className="leading-snug"><MathText>{choice}</MathText></span>
+                <span className="leading-snug"><MathText>{question.choices[origIdx]}</MathText></span>
               </button>
             );
           })}
@@ -218,10 +232,10 @@ export function Quiz({
         {picked !== null && (
           <div className="rise mt-5 rounded-xl border border-line-soft bg-paper-raised p-4">
             <p className="text-sm font-medium">
-              {picked === question.answerIndex ? (
+              {picked === correctDisplay ? (
                 <span className="text-good">Correct.</span>
               ) : (
-                <span className="text-bad">Not quite — it&apos;s {LETTERS[question.answerIndex]}.</span>
+                <span className="text-bad">Not quite — it&apos;s {LETTERS[correctDisplay]}.</span>
               )}
             </p>
             <p className="mt-1 text-sm text-ink-soft leading-relaxed">

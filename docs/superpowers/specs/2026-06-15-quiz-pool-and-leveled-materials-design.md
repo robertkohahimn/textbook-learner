@@ -130,6 +130,8 @@ matching today. `lib/jobs.ts` is unchanged.
   - The prompt asks for *exactly 4* choices, but validation stays lenient at ≥ 2 (matching
     today's `validateMaterials`) to tolerate model variance rather than error the lesson.
 - Two-attempt retry with an error nudge, mirroring `generateMaterials` today.
+- Stored `answerIndex` is left exactly as generated; choice order is randomized at **display**
+  time (see §6), not here.
 
 ### 4.3 Orchestration
 
@@ -193,9 +195,15 @@ Three phases: `setup` → `quiz` → `result`.
 - **setup** (new): "How many questions?" with preset buttons from `quizCountPresets(pool.length)`
   (e.g. `5 / 10 / 20 / All (24)`), the default preselected. Shows prior performance:
   best attempt via `bestAttempt` rendered as `best 17/20 (85%)`, plus attempt count.
-  On start: `selected = selectQuestions(quiz, chosenCount)`; phase → `quiz`.
-- **quiz**: the existing one-question-at-a-time flow, iterating over `selected`
-  (`quiz[selected[i]]`). Unchanged interaction (pick → reveal → next).
+  On start: `selected = selectQuestions(quiz, chosenCount)`, and a per-question choice order
+  `orders = selected.map(i => shuffledIndices(quiz[i].choices.length))` is computed; phase → `quiz`.
+- **quiz**: one-question-at-a-time (pick → reveal → next). Choices are displayed in the
+  shuffled `orders[index]` so the correct answer isn't always option A — models reliably emit
+  it first, which is what made every answer "A". The shuffle is **display-only and per attempt**
+  (re-rolled on each `setup`→`quiz`), so it also fixes already-stored quizzes without
+  regeneration and prevents memorizing a fixed position. The picked **display** position is
+  mapped back through `orders[index]` to the stored choice index before it goes into `answers`,
+  so the persisted `answerIndex` and the grading contract are untouched.
 - On finish, POST `{ questions: selected, answers }` (see §7). phase → `result`.
 - **result**: unchanged layout, but iterates `selected` and aligns `result.results[i]`.
   "Retake quiz" returns to **setup** (so the learner can change the count).
