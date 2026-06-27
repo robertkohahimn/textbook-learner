@@ -57,9 +57,16 @@ Expected: all existing test files pass (`tests/annotations.test.ts`, `tests/deck
 - [ ] **Step 3: Confirm typecheck works via the local binary**
 
 Run: `node_modules/.bin/tsc --noEmit -p tsconfig.json`
-Expected: no output, exit 0. (If bare `tsc` prints "This is not the tsc command you are looking for", that's the global shim — always use the `node_modules/.bin/tsc` path.)
+Expected: no output, exit 0. (If bare `tsc` prints "This is not the tsc command you are looking for", that's the global shim — always use the `node_modules/.bin/tsc` path.) **This is the authoritative structural gate** for every later task — it needs no DB or env.
 
-- [ ] **Step 4: Read the Next.js route-handler doc (per AGENTS.md)**
+- [ ] **Step 4: Establish whether `npm run build` is runnable in this environment**
+
+Run: `npm run build`
+Expected: ideally succeeds. `next build` loads the API route module graph (native `better-sqlite3`, `lib/db`, `getLlm`), so it may fail for **environment** reasons (missing DB path/env) unrelated to code.
+- If it succeeds: keep `npm run build` as the secondary gate in Tasks 5-7.
+- If it fails on env (not on a type/syntax error): **drop `npm run build` from later tasks' gates** and rely on `node_modules/.bin/tsc --noEmit` + `npm run dev` smoke instead. Record which here so later tasks are consistent.
+
+- [ ] **Step 5: Read the Next.js route-handler doc (per AGENTS.md)**
 
 Before Task 4 you will edit an API route. Locate and skim the relevant guide now:
 Run: `ls node_modules/next/dist/docs/ && find node_modules/next/dist/docs -iname '*rout*' -o -iname '*api*' | head`
@@ -159,11 +166,31 @@ git commit -m "Fix: highlight-note input swallowed spaces (stop trimming per key
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `tests/annotations.test.ts`:
+First extend the **existing** top-of-file import in `tests/annotations.test.ts` (don't add a second import statement). Change:
 
 ```ts
-import { rollupEntries, type SlideAnnotation } from "@/lib/annotations";
+import {
+  buildFieldPieces,
+  validateSlideAnnotation,
+  type Highlight,
+} from "@/lib/annotations";
+```
 
+to:
+
+```ts
+import {
+  buildFieldPieces,
+  rollupEntries,
+  validateSlideAnnotation,
+  type Highlight,
+  type SlideAnnotation,
+} from "@/lib/annotations";
+```
+
+Then append this `describe` block to the end of the file:
+
+```ts
 describe("rollupEntries", () => {
   const slides = [{ title: "Intro" }, { title: "Body" }, { title: "End" }];
   const ann = (over: Partial<SlideAnnotation>): SlideAnnotation => ({
@@ -527,14 +554,13 @@ export type SlideAnnotations = ReturnType<typeof useSlideAnnotations>;
 
 In `components/slides.tsx`:
 
-Update the import to also pull the type:
+Update the import to also pull the type (and drop `useSlideAnnotations` — the hook is now called in `Lesson`, not here; only the type is used):
 
 ```tsx
 import {
   AnnotationPanel,
   captureFieldSelection,
   Highlightable,
-  useSlideAnnotations,
   type FieldSelection,
   type SlideAnnotations,
 } from "./slide-annotations";
@@ -739,6 +765,8 @@ git commit -m "Lift slide index + annotations store from Slides up to Lesson"
 
 This is the core integration: introduce the grid + rail, move Notes into the rail (editable on Slides, roll-up elsewhere), put the Tutor in the rail (memoized, fill layout, slide-aware), and remove the Tutor top tab and the in-slide notes UI.
 
+> **Execute Steps 1-6 as one unit; do not typecheck between them.** They are mutually dependent (e.g. Step 2 makes `AnnotationPanel.slideNumber` required while its old caller isn't removed until Step 5), so intermediate states won't compile by design. The first gate is Step 7.
+
 **Files:**
 - Modify: `components/tutor.tsx` (primitive props, slideContext, fill layout)
 - Modify: `components/slide-annotations.tsx` (`AnnotationPanel` label + empty state + scroll effect; new `NotesRollup`)
@@ -825,10 +853,10 @@ Convert the layout to fill its container. Change the outer wrapper from:
       <div className="space-y-5 min-h-[10rem]">
 ```
 
-to:
+to (use `flex-1 min-h-0`, **not** `h-full` — percentage height resolves unreliably against the auto-height parent in the mobile fallback):
 
 ```tsx
-    <div className="fade flex h-full min-h-0 flex-col">
+    <div className="fade flex min-h-0 flex-1 flex-col">
       <div className="flex-1 min-h-0 space-y-5 overflow-y-auto pr-1">
 ```
 
@@ -1075,13 +1103,12 @@ Note: the editable `AnnotationPanel` already renders its own "Your notes · Slid
 
 In `components/slides.tsx`:
 
-Remove `AnnotationPanel` from the import (keep the rest):
+Remove `AnnotationPanel` from the import (and `useSlideAnnotations` stays gone — keep only what `slides.tsx` still uses):
 
 ```tsx
 import {
   captureFieldSelection,
   Highlightable,
-  useSlideAnnotations,
   type FieldSelection,
   type SlideAnnotations,
 } from "./slide-annotations";
@@ -1417,6 +1444,18 @@ Replace the `<LessonRail ... />` element with a conditional + reopen button:
 
 Note: the reopen button sits **after** the grid `</div>` so it isn't constrained by the centered column. Make sure the closing `</div>` placement is correct (the grid div closes, then the button, then the `</>` of the ready branch).
 
+- [ ] **Step 2b: Center the title block to match the collapsed reading column**
+
+The lesson title section (`components/lesson.tsx`, currently `<section className="rise mt-8 sm:mt-10 max-w-3xl">` at ~line 99) renders **above** the ready/generating branch and stays shared (it must still show during the "Preparing this lesson" state). In open mode it left-aligns with the grid's left column; in collapsed mode the body becomes `mx-auto max-w-3xl` (centered), so the left-aligned title would no longer line up with it. Make the title's centering track `railOpen`:
+
+```tsx
+      <section
+        className={`rise mt-8 sm:mt-10 max-w-3xl ${railOpen ? "" : "mx-auto"}`}
+      >
+```
+
+(Open: left-aligned, same left edge as the left column. Collapsed: centered, same as the body. During generating, `railOpen` defaults open → left-aligned as today.)
+
 - [ ] **Step 3: Add the collapse button to the rail header**
 
 In `components/lesson-rail.tsx`, add `onCollapse` to the props type and signature:
@@ -1473,6 +1512,7 @@ Expected: build succeeds.
 
 `npm run dev`, ready lesson:
 - Click "Hide ›" → rail disappears, the reader centers, the "Notes & Tutor" reopen button appears.
+- **Collapsed alignment:** the lesson title and the body share the same left/right edges (both centered `max-w-3xl`) — no left/right offset between the title and the slide/quiz below it.
 - Reload → the rail stays hidden (persisted). Click reopen → rail returns; reload → it stays open.
 - While collapsed, select text on a slide and click Highlight → the rail auto-reopens with the new highlight focused.
 
