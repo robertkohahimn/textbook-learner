@@ -42,6 +42,39 @@ the floating Highlight button, the stage refs, and all the slide rendering.
 
 This is the smallest cut that makes a persistent, slide-aware rail possible.
 
+### Re-render containment (mandatory, not optional)
+
+`useSlideAnnotations` calls `setAnnotations` **synchronously on every keystroke**
+in a note — the `debounce` flag defers only the network `PUT`, not the state
+update (`update()` → `setAnnotations`). Today the hook lives in `Slides`, so that
+re-render is contained to the Slides subtree. Lifting it to `Lesson` would
+re-render the **entire** `Lesson` tree on every character typed — including
+`Tutor`, which may be mid-stream, and which re-renders `katex.renderToString` is
+*not* involved in but the streaming markdown is. That is a latency/UX regression
+worse than the layout it replaces.
+
+Mitigation — wrap `Tutor` in `React.memo` and pass it **primitive** props that do
+not change while typing a note, so the memo skips the re-render:
+
+```tsx
+const TutorPanel = React.memo(Tutor);
+// ...
+const safeIndex = Math.min(index, slides.length - 1);
+<TutorPanel
+  lessonId={lessonId}
+  slideIndex={safeIndex}
+  slideTitle={slides[safeIndex]?.title ?? ""}
+/>
+```
+
+Primitives (not an object literal) avoid a `useMemo` and keep the memo's shallow
+compare stable across note edits. The reverse direction is already safe: `Tutor`'s
+`liveText` is local state and does not propagate upward, so streaming never thrashes
+the slide. Do **not** also `React.memo(Slides)` keyed on `annos`: the hook returns a
+fresh object literal with fresh inline closures every render (`addHighlight`,
+`setHighlightNote`, … are not `useCallback`-stabilized), so that memo would never
+hit. `Slides` re-rendering on note edits is preexisting and acceptable; leave it.
+
 ## Page layout — `components/lesson.tsx`
 
 - **Shell** widens `max-w-6xl` → `max-w-7xl` (keep `px-6`). Header (Wordmark +
@@ -62,7 +95,13 @@ This is the smallest cut that makes a persistent, slide-aware rail possible.
   rail is only `sticky`/full-height at `lg+`; on mobile it's static and stacked.
 - The rail and its contents are `print:hidden` (printing stays deck-only, as today).
 
-The sticky tab nav keeps its current treatment but loses the Tutor tab:
+The sticky tab nav loses the Tutor tab **and** its full-bleed. Today the nav uses
+`-mx-6 px-6` to reach the viewport edges under the single-column shell
+(`lesson.tsx:146-148`); inside a `minmax(0,1fr)` grid column those negative margins
+bleed into the gap and under the rail. Drop them — the nav becomes
+`sticky top-0 z-10 bg-paper/85 backdrop-blur-sm border-b border-line` confined to
+the left column. The nav's `z-10` and the rail's sticky `top-0` coexist (different
+columns); keep the nav's z-index from exceeding the rail's stacking context.
 
 ```ts
 const TABS = [
@@ -86,8 +125,12 @@ sections separated by a divider.
   - `tab === "slides"` → **editable** `SlideNotes` for the current `index`
     (the panel from `slide-annotations.tsx`, see § Notes).
   - otherwise → **read-only** `NotesRollup` (see § Roll-up).
-- **Tutor (bottom):** `flex-1 min-h-0`, the `Tutor` component in "fill" mode
-  (messages scroll internally; the ask-box pins to the bottom of the rail).
+- **Tutor (bottom):** `flex-1 min-h-0` at `lg+` (messages scroll internally; the
+  ask-box pins to the bottom of the rail). **Mobile sizing is mandatory:** the rail
+  is static (not `h-[100dvh]`) below `lg`, so `flex-1` has no basis and the tutor
+  would collapse to ~0px. Give the tutor pane `min-h-[60vh] lg:min-h-0` so it stays
+  usable when the rail stacks under the reader. The Notes cap (`lg:max-h-[45%]`) is
+  already `lg:`-scoped, so it correctly does not constrain mobile.
 - Rail header: a title and a **collapse** button (chevron) that sets `railOpen`
   false.
 
@@ -107,9 +150,23 @@ Tutor tab unmounts it).
   highlight it."*
 - **Slide label.** Header reads `Your notes · Slide N` so it's unambiguous which
   slide the notes belong to.
-- **`focusId` + scroll-to.** Unchanged behavior: when a highlight is picked (mark
-  clicked in the slide, or just created), the matching `#hl-<id>` scrolls into view
-  and glows. `focusId` now arrives as a prop from `Lesson`.
+- **`focusId` + scroll-to (relocated).** Today the scroll lives inside
+  `Slides.pickHighlight` as a `setTimeout(60)` + `scrollIntoView` (`slides.tsx:74-82`).
+  That mechanism is now orphaned — the panel lives in the rail. Move it into the
+  editable panel as a post-commit effect, which also drops the fragile timeout
+  (the effect runs after the panel has rendered the target):
+
+  ```tsx
+  useEffect(() => {
+    if (!focusId) return;
+    document.getElementById(`hl-${focusId}`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [focusId]);
+  ```
+
+  `focusId` arrives as a prop from `Lesson`. Known edge: re-picking the **same**
+  highlight id will not refire (deps unchanged); if that becomes annoying, carry a
+  focus nonce `{ id, n }` instead of a bare id. Deferred — name it, don't build it.
 
 ### Space-in-highlight-note fix
 
@@ -174,15 +231,23 @@ A read-only summary shown in the rail when the active view is **not** Slides.
 
 ## Slide-aware tutor
 
-- **`components/tutor.tsx`:** add prop `currentSlide?: { index: number; title:
-  string }`. Include it in the POST body as
-  `slideContext: currentSlide && { index, title }`. Also add a layout variant so
-  the component fills the rail: messages area `flex-1 overflow-y-auto`, the form
-  pinned at the bottom of the flex container instead of `sticky bottom-0` page
-  scroll, and drop the `max-w-2xl` when in the rail.
-- **`app/api/lessons/[lessonId]/tutor/route.ts`:** read
-  `body.slideContext` (validate: integer `index ≥ 0`, string `title`) and pass it
-  to `buildTutorPrompt`.
+- **`components/tutor.tsx`:** take **primitive** props `slideIndex: number` and
+  `slideTitle: string` (per the memo requirement above — an object literal would
+  defeat `React.memo`). On send, include
+  `slideContext: { index: slideIndex, title: slideTitle }` in the POST body.
+  **No layout variant** — after this change `Tutor` has exactly one caller (the
+  rail), so convert its layout outright rather than branching: messages area
+  `flex-1 overflow-y-auto`, the form pinned at the bottom of the flex container
+  instead of `sticky bottom-0` page scroll, and delete `max-w-2xl` unconditionally.
+  The existing `bottomRef.scrollIntoView({ block: "end" })` autoscroll still works
+  against the nearest scroll container.
+- **`app/api/lessons/[lessonId]/tutor/route.ts`:** read `body.slideContext`.
+  Validate `Number.isInteger(index) && index >= 0`; coerce `title` to a string and
+  **truncate to ~200 chars** before it reaches the prompt. Slide titles are
+  model-generated (not user input) and are *not* otherwise in the tutor system
+  prompt today (`lib/tutor.ts:28-37` uses lesson text + takeaways only), so this is
+  newly introduced surface — bound it. Pass the sanitized value to
+  `buildTutorPrompt`.
 - **`lib/tutor.ts`:** `buildTutorPrompt` gains an optional
   `currentSlide?: { index: number; title: string }` param. When present, append one
   line to the system prompt:
@@ -196,9 +261,14 @@ A read-only summary shown in the rail when the active view is **not** Slides.
 
 - **`railOpen`** persists in `localStorage` under `folio:lesson-rail-open`
   (`"1"`/`"0"`). Default **open**. Hydrate in a mount `useEffect` (same pattern as
-  the existing `?tab=` restore) so SSR renders the default and there's no markup
-  mismatch. The collapse button and the reopen button both write through to
-  storage.
+  the existing `?tab=` restore). The collapse button and the reopen button both
+  write through to storage.
+- **Honest tradeoff:** there is no hydration *markup* mismatch (SSR renders the
+  default `open`, and the first client render matches), but a user who prefers
+  **closed** sees the two-column grid paint and then collapse to one column after
+  mount — a one-frame layout flash. Acceptable for a study app. If it grates, the
+  only clean fix is a blocking inline `<script>` in the document head that sets a
+  class before first paint; not worth it now.
 - Rail open/closed is a global UI preference (not per-lesson), so a single key is
   fine and matches the lightweight feel of the `?tab=` memory.
 
@@ -207,15 +277,16 @@ A read-only summary shown in the rail when the active view is **not** Slides.
 ```
 Lesson
  ├─ owns: tab, index, focusId, railOpen, annos = useSlideAnnotations(lessonId)
+ ├─ safeIndex = min(index, slides.length - 1)
  ├─ left column
  │   ├─ title/meta
- │   ├─ tab nav (slides | takeaways | quiz)
+ │   ├─ tab nav (slides | takeaways | quiz)   ← no -mx-6/px-6 full-bleed
  │   └─ view: Slides(index, onIndexChange, annos, onPickHighlight)
  │            | Takeaways | Quiz
  └─ LessonRail (mounted while ready)
-     ├─ Notes:  tab==="slides" ? SlideNotes(annos[index], index, focusId, handlers)
-     │                          : NotesRollup(annos, slides, onJump)
-     └─ Tutor(lessonId, currentSlide = slides[index])
+     ├─ Notes:  tab==="slides" ? SlideNotes(annos[safeIndex], safeIndex, focusId, handlers)
+     │                          : NotesRollup(annos.annotations, slides, onJump)
+     └─ React.memo(Tutor)(lessonId, slideIndex=safeIndex, slideTitle=slides[safeIndex]?.title)
 ```
 
 ## Edge cases
@@ -240,6 +311,12 @@ Lesson
   an entry jumps back to that slide; "explain this" in the tutor references the
   current slide; `←/→/n/g/f` still navigate from the slide but not while typing in
   a note/tutor box; present (F) fullscreen still works; print still emits the deck.
+- **Regression — re-render containment (CRITICAL-1):** while the tutor is mid-stream,
+  type in a slide note. The streaming reply must not stutter or reset. Confirm via
+  React DevTools "Highlight updates" (or a `console.count` in `Tutor`) that
+  per-keystroke note edits do **not** re-render the memoized `Tutor`.
+- **Regression — mobile tutor height (CRITICAL-2):** at `< lg` width the stacked
+  tutor pane has a usable height (not collapsed to ~0px) and its ask-box is reachable.
 - **Unit:** `buildTutorPrompt` includes the slide line when `currentSlide` is
   passed and omits it otherwise. `NotesRollup`'s derive-list helper (pure) returns
   the right ordered subset.
@@ -248,15 +325,19 @@ Lesson
 ## Files touched
 
 - `components/lesson.tsx` — widen shell; 2-col grid; lift `index`/`annos`/
-  `focusId`/`railOpen`; remove Tutor tab; render `LessonRail`.
-- `components/lesson-rail.tsx` *(new)* — the stacked Notes + Tutor rail, collapse.
+  `focusId`/`railOpen`; remove Tutor tab; drop the nav full-bleed (`-mx-6 px-6`);
+  render `LessonRail`; wrap the tutor in `React.memo` with primitive props.
+- `components/lesson-rail.tsx` *(new)* — the stacked Notes + Tutor rail (mobile
+  `min-h-[60vh]` tutor pane), collapse button.
 - `components/slides.tsx` — controlled `index`; take `annos`/`onPickHighlight`;
-  remove `AnnotationPanel`/"Annotate"/`annotateOpen`/internal `index`+`annos`.
+  remove `AnnotationPanel`/"Annotate"/`annotateOpen`/internal `index`+`annos`; the
+  `setTimeout` scroll moves out (now a `focusId` effect in the panel).
 - `components/slide-annotations.tsx` — `setHighlightNote` raw-store fix; always-on
-  + empty-state + "Slide N" label for the editable panel; new `NotesRollup`.
-- `components/tutor.tsx` — `currentSlide` prop + `slideContext` in POST; rail fill
-  layout variant.
-- `app/api/lessons/[lessonId]/tutor/route.ts` — accept/validate `slideContext`.
+  + empty-state + "Slide N" label + `focusId` scroll effect for the editable panel;
+  new `NotesRollup`.
+- `components/tutor.tsx` — primitive `slideIndex`/`slideTitle` props + `slideContext`
+  in POST; layout converted outright to fill the rail (no variant flag).
+- `app/api/lessons/[lessonId]/tutor/route.ts` — accept/validate/bound `slideContext`.
 - `lib/tutor.ts` — `buildTutorPrompt` optional `currentSlide`.
 
 ## Out of scope (YAGNI)
