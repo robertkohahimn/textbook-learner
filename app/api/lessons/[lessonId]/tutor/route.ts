@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as db from "@/lib/db";
 import { getLlm } from "@/lib/llm";
-import { buildTutorPrompt, starterQuestions } from "@/lib/tutor";
+import { buildTutorPrompt, sanitizeSlideContext, starterQuestions } from "@/lib/tutor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,8 +24,12 @@ export async function POST(req: Request, { params }: Params) {
   const lesson = db.getLesson(lessonId);
   if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
 
-  const body = (await req.json().catch(() => ({}))) as { question?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    question?: string;
+    slideContext?: unknown;
+  };
   const question = body.question?.trim();
+  const currentSlide = sanitizeSlideContext(body.slideContext);
   if (!question) {
     return NextResponse.json({ error: "Question is required" }, { status: 400 });
   }
@@ -38,7 +42,8 @@ export async function POST(req: Request, { params }: Params) {
     materials,
     lessonText,
     history,
-    question
+    question,
+    currentSlide
   );
 
   db.insertTutorMessage(lessonId, "user", question);
