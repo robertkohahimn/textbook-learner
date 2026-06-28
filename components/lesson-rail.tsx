@@ -23,6 +23,7 @@ export function LessonRail({
   annos,
   focusId,
   onJump,
+  onCollapse,
 }: {
   tab: "slides" | "takeaways" | "quiz";
   lessonId: string;
@@ -31,11 +32,23 @@ export function LessonRail({
   annos: SlideAnnotations;
   focusId: string | null;
   onJump: (index: number) => void;
+  onCollapse: () => void;
 }) {
   const ann = annos.annotations[safeIndex] ?? emptyAnnotation();
 
   return (
     <aside className="mt-8 flex flex-col gap-4 lg:sticky lg:top-0 lg:mt-0 lg:h-[100dvh] lg:py-6 print:hidden">
+      <div className="flex shrink-0 items-center justify-between lg:pt-0">
+        <p className="font-mono text-xs text-ink-faint">Notes &amp; Tutor</p>
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Collapse panel"
+          className="rounded-full border border-line px-2 py-1 text-xs text-ink-soft hover:border-ink-faint hover:text-ink transition-colors cursor-pointer"
+        >
+          Hide ›
+        </button>
+      </div>
       <section className="rounded-xl border border-line bg-paper-raised px-4 py-3 lg:max-h-[45%] lg:overflow-y-auto">
         {tab === "slides" ? (
           <AnnotationPanel

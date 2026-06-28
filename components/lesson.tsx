@@ -36,6 +36,7 @@ export function Lesson({ lessonId }: { lessonId: string }) {
   const [completing, setCompleting] = useState(false);
   const [index, setIndex] = useState(0);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [railOpen, setRailOpen] = useState(true);
   const annos = useSlideAnnotations(lessonId);
 
   // Tab state lives in ?tab= so a refresh keeps your place.
@@ -43,6 +44,15 @@ export function Lesson({ lessonId }: { lessonId: string }) {
     const initial = new URLSearchParams(window.location.search).get("tab");
     if (TABS.some((t) => t.key === initial)) setTab(initial as TabKey);
   }, []);
+
+  useEffect(() => {
+    setRailOpen(localStorage.getItem("folio:lesson-rail-open") !== "0");
+  }, []);
+
+  function toggleRail(open: boolean) {
+    setRailOpen(open);
+    localStorage.setItem("folio:lesson-rail-open", open ? "1" : "0");
+  }
 
   function switchTab(next: TabKey) {
     setTab(next);
@@ -72,7 +82,10 @@ export function Lesson({ lessonId }: { lessonId: string }) {
     if (slideCount > 0) setIndex((i) => Math.min(i, slideCount - 1));
   }, [slideCount]);
 
-  const pickHighlight = (id: string) => setFocusId(id);
+  const pickHighlight = (id: string) => {
+    setFocusId(id);
+    toggleRail(true);
+  };
 
   const safeIndex = Math.max(0, Math.min(index, slideCount - 1));
   const onJump = (i: number) => {
@@ -117,7 +130,9 @@ export function Lesson({ lessonId }: { lessonId: string }) {
 
   return (
     <Shell accent={book?.accent} bookId={book?.id} bookTitle={book?.title}>
-      <section className="rise mt-8 sm:mt-10 max-w-3xl">
+      <section
+        className={`rise mt-8 sm:mt-10 max-w-3xl ${railOpen ? "" : "mx-auto"}`}
+      >
         <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
           {moduleTitle ?? "Lesson"}
         </p>
@@ -163,7 +178,14 @@ export function Lesson({ lessonId }: { lessonId: string }) {
       {!ready ? (
         <GeneratingState status={lesson.status} error={lesson.error} />
       ) : (
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <>
+        <div
+            className={
+              railOpen
+                ? "grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]"
+                : "mx-auto max-w-3xl"
+            }
+          >
           <div className="min-w-0">
             <nav
               aria-label="Lesson sections"
@@ -219,16 +241,29 @@ export function Lesson({ lessonId }: { lessonId: string }) {
             </section>
           </div>
 
-          <LessonRail
-            tab={tab}
-            lessonId={lessonId}
-            slides={data.materials!.slides}
-            safeIndex={safeIndex}
-            annos={annos}
-            focusId={focusId}
-            onJump={onJump}
-          />
-        </div>
+            {railOpen ? (
+              <LessonRail
+                tab={tab}
+                lessonId={lessonId}
+                slides={data.materials!.slides}
+                safeIndex={safeIndex}
+                annos={annos}
+                focusId={focusId}
+                onJump={onJump}
+                onCollapse={() => toggleRail(false)}
+              />
+            ) : null}
+          </div>
+          {!railOpen && (
+            <button
+              type="button"
+              onClick={() => toggleRail(true)}
+              className="fixed right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-line bg-paper-raised px-3 py-2 text-xs text-ink-soft shadow-[0_10px_24px_-12px_rgba(35,29,18,0.5)] hover:border-accent hover:text-accent transition-colors cursor-pointer print:hidden"
+            >
+              Notes &amp; Tutor
+            </button>
+          )}
+        </>
       )}
     </Shell>
   );
