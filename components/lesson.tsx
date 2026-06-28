@@ -10,7 +10,7 @@ import { Slides } from "./slides";
 import { useSlideAnnotations } from "./slide-annotations";
 import { Takeaways } from "./takeaways";
 import { Quiz } from "./quiz";
-import { Tutor } from "./tutor";
+import { LessonRail } from "./lesson-rail";
 
 interface LessonResponse {
   lesson: LessonRow;
@@ -27,7 +27,6 @@ const TABS = [
   { key: "slides", label: "Slides" },
   { key: "takeaways", label: "Takeaways" },
   { key: "quiz", label: "Quiz" },
-  { key: "tutor", label: "Tutor" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -74,6 +73,16 @@ export function Lesson({ lessonId }: { lessonId: string }) {
   }, [slideCount]);
 
   const pickHighlight = (id: string) => setFocusId(id);
+
+  const safeIndex = Math.max(0, Math.min(index, slideCount - 1));
+  const onJump = (i: number) => {
+    switchTab("slides");
+    setIndex(i);
+    const first = data?.materials?.slides
+      ? (annos.annotations[i]?.highlights[0]?.id ?? null)
+      : null;
+    setFocusId(first);
+  };
 
   const ready = data?.lesson.status === "ready" && data.materials;
 
@@ -154,62 +163,72 @@ export function Lesson({ lessonId }: { lessonId: string }) {
       {!ready ? (
         <GeneratingState status={lesson.status} error={lesson.error} />
       ) : (
-        <>
-          <nav
-            aria-label="Lesson sections"
-            className="rise sticky top-0 z-10 mt-10 -mx-6 px-6 bg-paper/85 backdrop-blur-sm border-b border-line"
-          >
-            <div className="flex gap-1 max-w-3xl">
-              {TABS.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => switchTab(t.key)}
-                  aria-current={tab === t.key ? "page" : undefined}
-                  className={`relative px-4 py-3 text-sm font-medium transition-colors cursor-pointer ${
-                    tab === t.key ? "text-ink" : "text-ink-faint hover:text-ink-soft"
-                  }`}
-                >
-                  {t.label}
-                  <span
-                    className={`absolute inset-x-3 -bottom-px h-0.5 rounded-full transition-all duration-300 ${
-                      tab === t.key ? "bg-accent" : "bg-transparent"
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="min-w-0">
+            <nav
+              aria-label="Lesson sections"
+              className="rise sticky top-0 z-10 mt-10 bg-paper/85 backdrop-blur-sm border-b border-line"
+            >
+              <div className="flex gap-1">
+                {TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => switchTab(t.key)}
+                    aria-current={tab === t.key ? "page" : undefined}
+                    className={`relative px-4 py-3 text-sm font-medium transition-colors cursor-pointer ${
+                      tab === t.key ? "text-ink" : "text-ink-faint hover:text-ink-soft"
                     }`}
-                  />
-                </button>
-              ))}
-            </div>
-          </nav>
+                  >
+                    {t.label}
+                    <span
+                      className={`absolute inset-x-3 -bottom-px h-0.5 rounded-full transition-all duration-300 ${
+                        tab === t.key ? "bg-accent" : "bg-transparent"
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </nav>
 
-          <section className="mt-8 max-w-3xl pb-24">
-            {tab === "slides" && (
-              <Slides
-                lessonId={lessonId}
-                slides={data.materials!.slides}
-                deckMeta={data.deckMeta}
-                lessonTitle={lesson.title}
-                onDeckChange={() => void refresh()}
-                index={index}
-                onIndexChange={setIndex}
-                annos={annos}
-                focusId={focusId}
-                onPickHighlight={pickHighlight}
-              />
-            )}
-            {tab === "takeaways" && (
-              <Takeaways takeaways={data.materials!.takeaways} />
-            )}
-            {tab === "quiz" && (
-              <Quiz
-                lessonId={lessonId}
-                quiz={data.materials!.quiz}
-                attempts={data.attempts}
-                onGraded={() => void refresh()}
-              />
-            )}
-            {tab === "tutor" && <Tutor lessonId={lessonId} />}
-          </section>
-        </>
+            <section className="mt-8 pb-24">
+              {tab === "slides" && (
+                <Slides
+                  lessonId={lessonId}
+                  slides={data.materials!.slides}
+                  deckMeta={data.deckMeta}
+                  lessonTitle={lesson.title}
+                  onDeckChange={() => void refresh()}
+                  index={index}
+                  onIndexChange={setIndex}
+                  annos={annos}
+                  onPickHighlight={pickHighlight}
+                />
+              )}
+              {tab === "takeaways" && (
+                <Takeaways takeaways={data.materials!.takeaways} />
+              )}
+              {tab === "quiz" && (
+                <Quiz
+                  lessonId={lessonId}
+                  quiz={data.materials!.quiz}
+                  attempts={data.attempts}
+                  onGraded={() => void refresh()}
+                />
+              )}
+            </section>
+          </div>
+
+          <LessonRail
+            tab={tab}
+            lessonId={lessonId}
+            slides={data.materials!.slides}
+            safeIndex={safeIndex}
+            annos={annos}
+            focusId={focusId}
+            onJump={onJump}
+          />
+        </div>
       )}
     </Shell>
   );
@@ -300,7 +319,7 @@ function Shell({
 }) {
   return (
     <main
-      className={`mx-auto w-full max-w-6xl px-6 ${
+      className={`mx-auto w-full max-w-7xl px-6 ${
         accent !== undefined ? `accent-${accent}` : ""
       }`}
     >

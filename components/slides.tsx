@@ -12,7 +12,6 @@ import {
 import { WorkingDot } from "./bits";
 import { MathText } from "./math-text";
 import {
-  AnnotationPanel,
   captureFieldSelection,
   Highlightable,
   type FieldSelection,
@@ -29,7 +28,6 @@ export function Slides({
   index,
   onIndexChange,
   annos,
-  focusId,
   onPickHighlight,
 }: {
   lessonId: string;
@@ -40,7 +38,6 @@ export function Slides({
   index: number;
   onIndexChange: React.Dispatch<React.SetStateAction<number>>;
   annos: SlideAnnotations;
-  focusId: string | null;
   onPickHighlight: (id: string) => void;
 }) {
   const [view, setView] = useState<"deck" | "grid">("deck");
@@ -49,7 +46,6 @@ export function Slides({
   const [exportOpen, setExportOpen] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [reviseOpen, setReviseOpen] = useState(false);
-  const [annotateOpen, setAnnotateOpen] = useState(false);
   const [selection, setSelection] = useState<FieldSelection | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const presentRef = useRef<HTMLDivElement>(null);
@@ -75,20 +71,11 @@ export function Slides({
     annos.addHighlight(safeIndex, hl);
     window.getSelection()?.removeAllRanges();
     setSelection(null);
-    setAnnotateOpen(true);
     onPickHighlight(hl.id);
   }
 
   const pickHighlight = useCallback(
-    (id: string) => {
-      setAnnotateOpen(true);
-      onPickHighlight(id);
-      setTimeout(() => {
-        document
-          .getElementById(`hl-${id}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 60);
-    },
+    (id: string) => onPickHighlight(id),
     [onPickHighlight]
   );
 
@@ -190,16 +177,6 @@ export function Slides({
               </div>
             )}
           </div>
-          <ToolButton
-            onClick={() => setAnnotateOpen((v) => !v)}
-            active={annotateOpen}
-            title="Highlights & your notes"
-          >
-            Annotate
-            {(ann.highlights.length > 0 || ann.note) && (
-              <span className="ml-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />
-            )}
-          </ToolButton>
           <ToolButton
             onClick={() => setCustomizeOpen((v) => !v)}
             active={customizeOpen}
@@ -369,18 +346,6 @@ export function Slides({
                 <MathText>{slide.notes || "No notes for this slide."}</MathText>
               </p>
             </div>
-          )}
-
-          {annotateOpen && (
-            <AnnotationPanel
-              annotation={ann}
-              focusId={focusId}
-              onNoteChange={(note) => annos.setSlideNote(safeIndex, note)}
-              onHighlightNote={(id, note) =>
-                annos.setHighlightNote(safeIndex, id, note)
-              }
-              onRemove={(id) => annos.removeHighlight(safeIndex, id)}
-            />
           )}
 
           <div className="mt-4">
