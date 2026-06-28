@@ -115,6 +115,37 @@ export function buildFieldPieces(
   return merged;
 }
 
+export interface RollupEntry {
+  index: number;
+  title: string;
+  note: string;
+  highlights: Highlight[];
+}
+
+/**
+ * Slides that carry user annotations, for the read-only rail roll-up shown off
+ * the Slides view. Includes a slide if it has a non-blank note or any highlight.
+ */
+export function rollupEntries(
+  annotations: Record<number, SlideAnnotation>,
+  slides: { title: string }[]
+): RollupEntry[] {
+  const out: RollupEntry[] = [];
+  for (const key of Object.keys(annotations)) {
+    const index = Number(key);
+    const ann = annotations[index];
+    if (!ann) continue;
+    if (ann.note.trim().length === 0 && ann.highlights.length === 0) continue;
+    out.push({
+      index,
+      title: slides[index]?.title ?? `Slide ${index + 1}`,
+      note: ann.note,
+      highlights: ann.highlights,
+    });
+  }
+  return out.sort((a, b) => a.index - b.index);
+}
+
 function isString(v: unknown): v is string {
   return typeof v === "string";
 }
