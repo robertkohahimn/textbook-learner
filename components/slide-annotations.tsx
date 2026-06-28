@@ -312,8 +312,10 @@ export function useSlideAnnotations(lessonId: string) {
         i,
         (a) => ({
           ...a,
+          // Store the raw string so spaces type normally; the server trims on
+          // save (validateSlideAnnotation), like the per-slide note path.
           highlights: a.highlights.map((h) =>
-            h.id === id ? { ...h, note: note.trim() || undefined } : h
+            h.id === id ? { ...h, note } : h
           ),
         }),
         true
