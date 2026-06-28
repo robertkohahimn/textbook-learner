@@ -7,6 +7,7 @@ import type { DeckMeta } from "@/lib/deck";
 import { usePoll } from "./use-poll";
 import { Wordmark } from "./bits";
 import { Slides } from "./slides";
+import { useSlideAnnotations } from "./slide-annotations";
 import { Takeaways } from "./takeaways";
 import { Quiz } from "./quiz";
 import { Tutor } from "./tutor";
@@ -34,6 +35,9 @@ type TabKey = (typeof TABS)[number]["key"];
 export function Lesson({ lessonId }: { lessonId: string }) {
   const [tab, setTab] = useState<TabKey>("slides");
   const [completing, setCompleting] = useState(false);
+  const [index, setIndex] = useState(0);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const annos = useSlideAnnotations(lessonId);
 
   // Tab state lives in ?tab= so a refresh keeps your place.
   useEffect(() => {
@@ -62,6 +66,14 @@ export function Lesson({ lessonId }: { lessonId: string }) {
   useEffect(() => {
     setActive(!data || data.lesson.status !== "ready");
   }, [data, setActive]);
+
+  // A regenerated deck may be shorter than where the reader was.
+  const slideCount = data?.materials?.slides.length ?? 0;
+  useEffect(() => {
+    if (slideCount > 0) setIndex((i) => Math.min(i, slideCount - 1));
+  }, [slideCount]);
+
+  const pickHighlight = (id: string) => setFocusId(id);
 
   const ready = data?.lesson.status === "ready" && data.materials;
 
@@ -177,6 +189,11 @@ export function Lesson({ lessonId }: { lessonId: string }) {
                 deckMeta={data.deckMeta}
                 lessonTitle={lesson.title}
                 onDeckChange={() => void refresh()}
+                index={index}
+                onIndexChange={setIndex}
+                annos={annos}
+                focusId={focusId}
+                onPickHighlight={pickHighlight}
               />
             )}
             {tab === "takeaways" && (

@@ -325,6 +325,8 @@ export function useSlideAnnotations(lessonId: string) {
   };
 }
 
+export type SlideAnnotations = ReturnType<typeof useSlideAnnotations>;
+
 /* ---------------- annotation panel ---------------- */
 
 export function AnnotationPanel({

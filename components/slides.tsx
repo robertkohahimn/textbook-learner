@@ -15,8 +15,8 @@ import {
   AnnotationPanel,
   captureFieldSelection,
   Highlightable,
-  useSlideAnnotations,
   type FieldSelection,
+  type SlideAnnotations,
 } from "./slide-annotations";
 import { emptyAnnotation, type Highlight } from "@/lib/annotations";
 
@@ -26,14 +26,23 @@ export function Slides({
   deckMeta,
   lessonTitle,
   onDeckChange,
+  index,
+  onIndexChange,
+  annos,
+  focusId,
+  onPickHighlight,
 }: {
   lessonId: string;
   slides: Slide[];
   deckMeta: DeckMeta | null;
   lessonTitle: string;
   onDeckChange: () => void;
+  index: number;
+  onIndexChange: React.Dispatch<React.SetStateAction<number>>;
+  annos: SlideAnnotations;
+  focusId: string | null;
+  onPickHighlight: (id: string) => void;
 }) {
-  const [index, setIndex] = useState(0);
   const [view, setView] = useState<"deck" | "grid">("deck");
   const [showNotes, setShowNotes] = useState(false);
   const [presenting, setPresenting] = useState(false);
@@ -42,10 +51,8 @@ export function Slides({
   const [reviseOpen, setReviseOpen] = useState(false);
   const [annotateOpen, setAnnotateOpen] = useState(false);
   const [selection, setSelection] = useState<FieldSelection | null>(null);
-  const [focusId, setFocusId] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const presentRef = useRef<HTMLDivElement>(null);
-  const annos = useSlideAnnotations(lessonId);
 
   const slide = slides[Math.min(index, slides.length - 1)];
   const safeIndex = Math.min(index, slides.length - 1);
@@ -69,27 +76,26 @@ export function Slides({
     window.getSelection()?.removeAllRanges();
     setSelection(null);
     setAnnotateOpen(true);
+    onPickHighlight(hl.id);
   }
 
-  const pickHighlight = useCallback((id: string) => {
-    setAnnotateOpen(true);
-    setFocusId(id);
-    setTimeout(() => {
-      document
-        .getElementById(`hl-${id}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 60);
-  }, []);
+  const pickHighlight = useCallback(
+    (id: string) => {
+      setAnnotateOpen(true);
+      onPickHighlight(id);
+      setTimeout(() => {
+        document
+          .getElementById(`hl-${id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 60);
+    },
+    [onPickHighlight]
+  );
 
-  // A regenerated deck may be shorter than where the reader was.
-  useEffect(() => {
-    setIndex((i) => Math.min(i, slides.length - 1));
-  }, [slides.length]);
-
-  const prev = useCallback(() => setIndex((i) => Math.max(i - 1, 0)), []);
+  const prev = useCallback(() => onIndexChange((i) => Math.max(i - 1, 0)), [onIndexChange]);
   const next = useCallback(
-    () => setIndex((i) => Math.min(i + 1, slides.length - 1)),
-    [slides.length]
+    () => onIndexChange((i) => Math.min(i + 1, slides.length - 1)),
+    [onIndexChange, slides.length]
   );
 
   // A pending selection belongs to the slide it was made on — drop it on any
@@ -209,7 +215,7 @@ export function Slides({
           deckMeta={deckMeta}
           onDone={() => {
             setCustomizeOpen(false);
-            setIndex(0);
+            onIndexChange(0);
             annos.reset(); // the server cleared this deck's annotations
             onDeckChange();
           }}
@@ -243,7 +249,7 @@ export function Slides({
               key={i}
               type="button"
               onClick={() => {
-                setIndex(i);
+                onIndexChange(i);
                 setView("deck");
               }}
               className={`group text-left cursor-pointer rounded-xl transition-all ${
@@ -335,7 +341,7 @@ export function Slides({
                     aria-label={`Slide ${i + 1}: ${s.title}${
                       annotated ? " (annotated)" : ""
                     }`}
-                    onClick={() => setIndex(i)}
+                    onClick={() => onIndexChange(i)}
                     className={`rounded-full transition-all duration-300 cursor-pointer ${
                       i === index
                         ? "w-6 h-1.5 bg-accent"
