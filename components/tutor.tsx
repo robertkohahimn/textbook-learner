@@ -23,7 +23,10 @@ export function Tutor({
   const [streaming, setStreaming] = useState(false);
   const [liveText, setLiveText] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
-  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+  const [lastSend, setLastSend] = useState<{
+    question: string;
+    slideIndex: number;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const loadedRef = useRef(false);
 
@@ -49,11 +52,13 @@ export function Tutor({
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, liveText, streaming]);
 
-  async function send(question: string) {
+  async function send(question: string, atSlide: number = slideIndex) {
     const q = question.trim();
     if (!q || streaming) return;
     setChatError(null);
-    setLastQuestion(q);
+    // Remember the slide the question was asked about so a retry re-sends the
+    // original slide context even if the reader has since navigated away.
+    setLastSend({ question: q, slideIndex: atSlide });
     setInput("");
     setMessages((m) => [...m, { role: "user", content: q }]);
     setStreaming(true);
@@ -66,7 +71,7 @@ export function Tutor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: q,
-          slideContext: { index: slideIndex },
+          slideContext: { index: atSlide },
         }),
       });
       if (!res.ok || !res.body) {
@@ -154,10 +159,10 @@ export function Tutor({
         {chatError && (
           <div role="alert" className="rise rounded-xl border border-bad/40 bg-bad/5 p-4 text-sm">
             <p className="text-bad">{chatError}</p>
-            {lastQuestion && (
+            {lastSend && (
               <button
                 type="button"
-                onClick={() => void send(lastQuestion)}
+                onClick={() => void send(lastSend.question, lastSend.slideIndex)}
                 className="mt-2 underline text-ink-soft hover:text-ink cursor-pointer"
               >
                 Try again
