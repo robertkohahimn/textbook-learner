@@ -81,11 +81,7 @@ export function LessonRail({
         <p className="mb-2 shrink-0 text-xs uppercase tracking-[0.2em] text-ink-faint">
           Tutor
         </p>
-        <TutorPanel
-          lessonId={lessonId}
-          slideIndex={safeIndex}
-          slideTitle={slides[safeIndex]?.title ?? ""}
-        />
+        <TutorPanel lessonId={lessonId} slideIndex={safeIndex} />
       </section>
     </aside>
   );

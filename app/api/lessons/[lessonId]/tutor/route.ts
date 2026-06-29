@@ -24,12 +24,14 @@ export async function POST(req: Request, { params }: Params) {
   const lesson = db.getLesson(lessonId);
   if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
 
-  const body = (await req.json().catch(() => ({}))) as {
-    question?: string;
-    slideContext?: unknown;
-  };
-  const question = body.question?.trim();
-  const currentSlide = sanitizeSlideContext(body.slideContext);
+  // Normalize untrusted JSON: req.json() can yield null or a non-object, and
+  // question may not be a string — guard so a malformed body hits the 400, not a 500.
+  const rawBody = await req.json().catch(() => ({}));
+  const body =
+    typeof rawBody === "object" && rawBody !== null
+      ? (rawBody as { question?: unknown; slideContext?: unknown })
+      : {};
+  const question = typeof body.question === "string" ? body.question.trim() : "";
   if (!question) {
     return NextResponse.json({ error: "Question is required" }, { status: 400 });
   }
@@ -37,6 +39,16 @@ export async function POST(req: Request, { params }: Params) {
   const history = db.getTutorMessages(lessonId);
   const materials = db.getMaterials(lessonId);
   const lessonText = db.getPagesText(lesson.book_id, lesson.page_start, lesson.page_end);
+
+  // Sanitize only the index from the client; derive the title from authoritative
+  // server-side materials so client text never reaches the system prompt.
+  const ctx = sanitizeSlideContext(body.slideContext);
+  const slides = materials?.slides;
+  const currentSlide =
+    ctx && slides && ctx.index < slides.length
+      ? { index: ctx.index, title: slides[ctx.index].title }
+      : undefined;
+
   const { system, prompt } = buildTutorPrompt(
     { title: lesson.title, summary: lesson.summary },
     materials,

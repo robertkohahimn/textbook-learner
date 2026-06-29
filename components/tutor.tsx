@@ -13,11 +13,9 @@ interface Message {
 export function Tutor({
   lessonId,
   slideIndex,
-  slideTitle,
 }: {
   lessonId: string;
   slideIndex: number;
-  slideTitle: string;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [starters, setStarters] = useState<string[]>([]);
@@ -68,7 +66,7 @@ export function Tutor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: q,
-          slideContext: { index: slideIndex, title: slideTitle },
+          slideContext: { index: slideIndex },
         }),
       });
       if (!res.ok || !res.body) {

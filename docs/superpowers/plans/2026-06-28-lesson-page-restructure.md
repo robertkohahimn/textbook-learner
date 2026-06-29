@@ -19,7 +19,7 @@
 - **TypeScript is `strict`** — no implicit `any`, handle `undefined`.
 - **Rail defaults to open.** Persist open/closed in `localStorage` under the exact key `folio:lesson-rail-open` (`"1"`/`"0"`), global (not per-lesson).
 - **Tutor tab is removed** from the top tabs; tabs become exactly `Slides · Takeaways · Quiz`.
-- **Slide-context title** sent to the tutor must be truncated to **200 chars** and validated server-side.
+- **Slide context**: the client sends only the slide **index**; the tutor route bounds-checks it and derives the title from server-side `materials.slides` (the client-supplied title is never trusted in the prompt).
 - Match existing code style: double quotes, 2-space indent, `cursor-pointer` on interactive elements, `text-ink*/accent/paper/line` Tailwind tokens already in the codebase.
 - Commit after every task. Keep the build green at every commit.
 
@@ -307,9 +307,9 @@ git commit -m "Add rollupEntries: derive the rail's read-only notes summary"
     currentSlide?: { index: number; title: string }
   ): TutorPrompt
 
-  function sanitizeSlideContext(raw: unknown): { index: number; title: string } | undefined
+  function sanitizeSlideContext(raw: unknown): { index: number } | undefined
   ```
-  When `currentSlide` is present, the system prompt gains one line naming the slide. `sanitizeSlideContext` returns `undefined` unless `index` is a non-negative integer; `title` is coerced to a string and truncated to 200 chars.
+  When `currentSlide` is present, the system prompt gains one line naming the slide. `sanitizeSlideContext` sanitizes the **index only** — it returns `undefined` unless `index` is a non-negative integer. The route bounds-checks that index against `materials.slides` and derives the title server-side from the authoritative slide; the client-supplied title is never trusted in the prompt. (Updated post-review — the original plan truncated a client title; deriving it server-side removes the prompt-injection surface.)
 
 - [ ] **Step 1: Write the failing tests**
 

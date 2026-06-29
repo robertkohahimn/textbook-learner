@@ -218,7 +218,7 @@ export function Lesson({ lessonId }: { lessonId: string }) {
                   deckMeta={data.deckMeta}
                   lessonTitle={lesson.title}
                   onDeckChange={() => void refresh()}
-                  index={index}
+                  index={safeIndex}
                   onIndexChange={setIndex}
                   annos={annos}
                   onPickHighlight={pickHighlight}

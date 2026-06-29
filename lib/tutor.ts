@@ -61,14 +61,13 @@ export function starterQuestions(materials: LessonMaterials): string[] {
     .map((t) => `Can you explain "${t.point}" in simpler terms?`);
 }
 
-/** Validate an untrusted slide-context body into a safe prompt input. */
-export function sanitizeSlideContext(
-  raw: unknown
-): { index: number; title: string } | undefined {
+// Validate ONLY the slide index from the untrusted body. The title is NOT taken
+// from the client — the route derives it from server-side lesson materials, so
+// client-supplied text can never reach the system prompt.
+export function sanitizeSlideContext(raw: unknown): { index: number } | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const r = raw as Record<string, unknown>;
   if (typeof r.index !== "number" || !Number.isInteger(r.index) || r.index < 0)
     return undefined;
-  const title = typeof r.title === "string" ? r.title.slice(0, 200) : "";
-  return { index: r.index, title };
+  return { index: r.index };
 }

@@ -241,13 +241,14 @@ A read-only summary shown in the rail when the active view is **not** Slides.
   instead of `sticky bottom-0` page scroll, and delete `max-w-2xl` unconditionally.
   The existing `bottomRef.scrollIntoView({ block: "end" })` autoscroll still works
   against the nearest scroll container.
-- **`app/api/lessons/[lessonId]/tutor/route.ts`:** read `body.slideContext`.
-  Validate `Number.isInteger(index) && index >= 0`; coerce `title` to a string and
-  **truncate to ~200 chars** before it reaches the prompt. Slide titles are
-  model-generated (not user input) and are *not* otherwise in the tutor system
-  prompt today (`lib/tutor.ts:28-37` uses lesson text + takeaways only), so this is
-  newly introduced surface — bound it. Pass the sanitized value to
-  `buildTutorPrompt`.
+- **`app/api/lessons/[lessonId]/tutor/route.ts`:** read `body.slideContext` and
+  sanitize the **index only** (`Number.isInteger(index) && index >= 0`). Bounds-check
+  it against `materials.slides` and derive the title from the server-side slide
+  (`slides[index].title`) — the title goes into the system prompt, so it must come
+  from authoritative materials, never from client text. (Updated post-review: the
+  original plan truncated a client-supplied title; deriving server-side removes the
+  injection surface and prevents index/title desync.) Pass the derived `{ index, title }`
+  to `buildTutorPrompt`.
 - **`lib/tutor.ts`:** `buildTutorPrompt` gains an optional
   `currentSlide?: { index: number; title: string }` param. When present, append one
   line to the system prompt:
@@ -274,7 +275,7 @@ A read-only summary shown in the rail when the active view is **not** Slides.
 
 ## Data flow (after)
 
-```
+```text
 Lesson
  ├─ owns: tab, index, focusId, railOpen, annos = useSlideAnnotations(lessonId)
  ├─ safeIndex = min(index, slides.length - 1)
