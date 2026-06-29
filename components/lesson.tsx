@@ -91,10 +91,7 @@ export function Lesson({ lessonId }: { lessonId: string }) {
   const onJump = (i: number) => {
     switchTab("slides");
     setIndex(i);
-    const first = data?.materials?.slides
-      ? (annos.annotations[i]?.highlights[0]?.id ?? null)
-      : null;
-    setFocusId(first);
+    setFocusId(annos.annotations[i]?.highlights[0]?.id ?? null);
   };
 
   const ready = data?.lesson.status === "ready" && data.materials;

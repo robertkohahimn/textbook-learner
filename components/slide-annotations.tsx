@@ -353,7 +353,7 @@ export function AnnotationPanel({
   }, [focusId]);
 
   return (
-    <div className="rise mt-5 rounded-xl border border-line bg-paper-raised px-5 py-4">
+    <div>
       <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
         Your notes · Slide {slideNumber}
       </p>
