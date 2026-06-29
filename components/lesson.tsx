@@ -7,9 +7,10 @@ import type { DeckMeta } from "@/lib/deck";
 import { usePoll } from "./use-poll";
 import { Wordmark } from "./bits";
 import { Slides } from "./slides";
+import { useSlideAnnotations } from "./slide-annotations";
 import { Takeaways } from "./takeaways";
 import { Quiz } from "./quiz";
-import { Tutor } from "./tutor";
+import { LessonRail } from "./lesson-rail";
 
 interface LessonResponse {
   lesson: LessonRow;
@@ -26,7 +27,6 @@ const TABS = [
   { key: "slides", label: "Slides" },
   { key: "takeaways", label: "Takeaways" },
   { key: "quiz", label: "Quiz" },
-  { key: "tutor", label: "Tutor" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -34,12 +34,25 @@ type TabKey = (typeof TABS)[number]["key"];
 export function Lesson({ lessonId }: { lessonId: string }) {
   const [tab, setTab] = useState<TabKey>("slides");
   const [completing, setCompleting] = useState(false);
+  const [index, setIndex] = useState(0);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [railOpen, setRailOpen] = useState(true);
+  const annos = useSlideAnnotations(lessonId);
 
   // Tab state lives in ?tab= so a refresh keeps your place.
   useEffect(() => {
     const initial = new URLSearchParams(window.location.search).get("tab");
     if (TABS.some((t) => t.key === initial)) setTab(initial as TabKey);
   }, []);
+
+  useEffect(() => {
+    setRailOpen(localStorage.getItem("folio:lesson-rail-open") !== "0");
+  }, []);
+
+  function toggleRail(open: boolean) {
+    setRailOpen(open);
+    localStorage.setItem("folio:lesson-rail-open", open ? "1" : "0");
+  }
 
   function switchTab(next: TabKey) {
     setTab(next);
@@ -62,6 +75,24 @@ export function Lesson({ lessonId }: { lessonId: string }) {
   useEffect(() => {
     setActive(!data || data.lesson.status !== "ready");
   }, [data, setActive]);
+
+  // A regenerated deck may be shorter than where the reader was.
+  const slideCount = data?.materials?.slides.length ?? 0;
+  useEffect(() => {
+    if (slideCount > 0) setIndex((i) => Math.min(i, slideCount - 1));
+  }, [slideCount]);
+
+  const pickHighlight = (id: string) => {
+    setFocusId(id);
+    toggleRail(true);
+  };
+
+  const safeIndex = Math.max(0, Math.min(index, slideCount - 1));
+  const onJump = (i: number) => {
+    switchTab("slides");
+    setIndex(i);
+    setFocusId(annos.annotations[i]?.highlights[0]?.id ?? null);
+  };
 
   const ready = data?.lesson.status === "ready" && data.materials;
 
@@ -96,7 +127,9 @@ export function Lesson({ lessonId }: { lessonId: string }) {
 
   return (
     <Shell accent={book?.accent} bookId={book?.id} bookTitle={book?.title}>
-      <section className="rise mt-8 sm:mt-10 max-w-3xl">
+      <section
+        className={`rise mt-8 sm:mt-10 max-w-3xl ${railOpen ? "" : "mx-auto"}`}
+      >
         <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
           {moduleTitle ?? "Lesson"}
         </p>
@@ -143,55 +176,90 @@ export function Lesson({ lessonId }: { lessonId: string }) {
         <GeneratingState status={lesson.status} error={lesson.error} />
       ) : (
         <>
-          <nav
-            aria-label="Lesson sections"
-            className="rise sticky top-0 z-10 mt-10 -mx-6 px-6 bg-paper/85 backdrop-blur-sm border-b border-line"
+        <div
+            className={
+              railOpen
+                ? "grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]"
+                : "mx-auto max-w-3xl"
+            }
           >
-            <div className="flex gap-1 max-w-3xl">
-              {TABS.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => switchTab(t.key)}
-                  aria-current={tab === t.key ? "page" : undefined}
-                  className={`relative px-4 py-3 text-sm font-medium transition-colors cursor-pointer ${
-                    tab === t.key ? "text-ink" : "text-ink-faint hover:text-ink-soft"
-                  }`}
-                >
-                  {t.label}
-                  <span
-                    className={`absolute inset-x-3 -bottom-px h-0.5 rounded-full transition-all duration-300 ${
-                      tab === t.key ? "bg-accent" : "bg-transparent"
+          <div className="min-w-0">
+            <nav
+              aria-label="Lesson sections"
+              className="rise sticky top-0 z-10 mt-10 bg-paper/85 backdrop-blur-sm border-b border-line"
+            >
+              <div className="flex gap-1">
+                {TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => switchTab(t.key)}
+                    aria-current={tab === t.key ? "page" : undefined}
+                    className={`relative px-4 py-3 text-sm font-medium transition-colors cursor-pointer ${
+                      tab === t.key ? "text-ink" : "text-ink-faint hover:text-ink-soft"
                     }`}
-                  />
-                </button>
-              ))}
-            </div>
-          </nav>
+                  >
+                    {t.label}
+                    <span
+                      className={`absolute inset-x-3 -bottom-px h-0.5 rounded-full transition-all duration-300 ${
+                        tab === t.key ? "bg-accent" : "bg-transparent"
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </nav>
 
-          <section className="mt-8 max-w-3xl pb-24">
-            {tab === "slides" && (
-              <Slides
+            <section className="mt-8 pb-24">
+              {tab === "slides" && (
+                <Slides
+                  lessonId={lessonId}
+                  slides={data.materials!.slides}
+                  deckMeta={data.deckMeta}
+                  lessonTitle={lesson.title}
+                  onDeckChange={() => void refresh()}
+                  index={safeIndex}
+                  onIndexChange={setIndex}
+                  annos={annos}
+                  onPickHighlight={pickHighlight}
+                />
+              )}
+              {tab === "takeaways" && (
+                <Takeaways takeaways={data.materials!.takeaways} />
+              )}
+              {tab === "quiz" && (
+                <Quiz
+                  lessonId={lessonId}
+                  quiz={data.materials!.quiz}
+                  attempts={data.attempts}
+                  onGraded={() => void refresh()}
+                />
+              )}
+            </section>
+          </div>
+
+            {railOpen ? (
+              <LessonRail
+                tab={tab}
                 lessonId={lessonId}
                 slides={data.materials!.slides}
-                deckMeta={data.deckMeta}
-                lessonTitle={lesson.title}
-                onDeckChange={() => void refresh()}
+                safeIndex={safeIndex}
+                annos={annos}
+                focusId={focusId}
+                onJump={onJump}
+                onCollapse={() => toggleRail(false)}
               />
-            )}
-            {tab === "takeaways" && (
-              <Takeaways takeaways={data.materials!.takeaways} />
-            )}
-            {tab === "quiz" && (
-              <Quiz
-                lessonId={lessonId}
-                quiz={data.materials!.quiz}
-                attempts={data.attempts}
-                onGraded={() => void refresh()}
-              />
-            )}
-            {tab === "tutor" && <Tutor lessonId={lessonId} />}
-          </section>
+            ) : null}
+          </div>
+          {!railOpen && (
+            <button
+              type="button"
+              onClick={() => toggleRail(true)}
+              className="fixed right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-line bg-paper-raised px-3 py-2 text-xs text-ink-soft shadow-[0_10px_24px_-12px_rgba(35,29,18,0.5)] hover:border-accent hover:text-accent transition-colors cursor-pointer print:hidden"
+            >
+              Notes &amp; Tutor
+            </button>
+          )}
         </>
       )}
     </Shell>
@@ -283,7 +351,7 @@ function Shell({
 }) {
   return (
     <main
-      className={`mx-auto w-full max-w-6xl px-6 ${
+      className={`mx-auto w-full max-w-7xl px-6 ${
         accent !== undefined ? `accent-${accent}` : ""
       }`}
     >

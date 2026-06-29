@@ -10,14 +10,23 @@ interface Message {
   content: string;
 }
 
-export function Tutor({ lessonId }: { lessonId: string }) {
+export function Tutor({
+  lessonId,
+  slideIndex,
+}: {
+  lessonId: string;
+  slideIndex: number;
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [starters, setStarters] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [liveText, setLiveText] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
-  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+  const [lastSend, setLastSend] = useState<{
+    question: string;
+    slideIndex: number;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const loadedRef = useRef(false);
 
@@ -43,11 +52,13 @@ export function Tutor({ lessonId }: { lessonId: string }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, liveText, streaming]);
 
-  async function send(question: string) {
+  async function send(question: string, atSlide: number = slideIndex) {
     const q = question.trim();
     if (!q || streaming) return;
     setChatError(null);
-    setLastQuestion(q);
+    // Remember the slide the question was asked about so a retry re-sends the
+    // original slide context even if the reader has since navigated away.
+    setLastSend({ question: q, slideIndex: atSlide });
     setInput("");
     setMessages((m) => [...m, { role: "user", content: q }]);
     setStreaming(true);
@@ -58,7 +69,10 @@ export function Tutor({ lessonId }: { lessonId: string }) {
       const res = await fetch(`/api/lessons/${lessonId}/tutor`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({
+          question: q,
+          slideContext: { index: atSlide },
+        }),
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -106,8 +120,8 @@ export function Tutor({ lessonId }: { lessonId: string }) {
   }
 
   return (
-    <div className="fade flex flex-col max-w-2xl">
-      <div className="space-y-5 min-h-[10rem]">
+    <div className="fade flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 min-h-0 space-y-5 overflow-y-auto pr-1">
         {messages.length === 0 && !streaming && (
           <div className="rise">
             <p className="text-ink-soft">
@@ -145,10 +159,10 @@ export function Tutor({ lessonId }: { lessonId: string }) {
         {chatError && (
           <div role="alert" className="rise rounded-xl border border-bad/40 bg-bad/5 p-4 text-sm">
             <p className="text-bad">{chatError}</p>
-            {lastQuestion && (
+            {lastSend && (
               <button
                 type="button"
-                onClick={() => void send(lastQuestion)}
+                onClick={() => void send(lastSend.question, lastSend.slideIndex)}
                 className="mt-2 underline text-ink-soft hover:text-ink cursor-pointer"
               >
                 Try again
@@ -164,7 +178,7 @@ export function Tutor({ lessonId }: { lessonId: string }) {
           e.preventDefault();
           void send(input);
         }}
-        className="sticky bottom-0 mt-6 bg-paper pb-6 pt-2"
+        className="mt-3 shrink-0 bg-paper pt-2"
       >
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-paper-raised p-2 focus-within:border-accent transition-colors shadow-[0_10px_30px_-18px_rgba(35,29,18,0.4)]">
           <textarea

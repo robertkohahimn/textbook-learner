@@ -5,6 +5,7 @@ import katex from "katex";
 import {
   buildFieldPieces,
   emptyAnnotation,
+  rollupEntries,
   type Highlight,
   type SlideAnnotation,
 } from "@/lib/annotations";
@@ -312,8 +313,10 @@ export function useSlideAnnotations(lessonId: string) {
         i,
         (a) => ({
           ...a,
+          // Store the raw string so spaces type normally; the server trims on
+          // save (validateSlideAnnotation), like the per-slide note path.
           highlights: a.highlights.map((h) =>
-            h.id === id ? { ...h, note: note.trim() || undefined } : h
+            h.id === id ? { ...h, note } : h
           ),
         }),
         true
@@ -323,24 +326,37 @@ export function useSlideAnnotations(lessonId: string) {
   };
 }
 
+export type SlideAnnotations = ReturnType<typeof useSlideAnnotations>;
+
 /* ---------------- annotation panel ---------------- */
 
 export function AnnotationPanel({
   annotation,
   focusId,
+  slideNumber,
   onNoteChange,
   onHighlightNote,
   onRemove,
 }: {
   annotation: SlideAnnotation;
   focusId: string | null;
+  slideNumber: number;
   onNoteChange: (note: string) => void;
   onHighlightNote: (id: string, note: string) => void;
   onRemove: (id: string) => void;
 }) {
+  useEffect(() => {
+    if (!focusId) return;
+    document
+      .getElementById(`hl-${focusId}`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [focusId]);
+
   return (
-    <div className="rise mt-5 rounded-xl border border-line bg-paper-raised px-5 py-4">
-      <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">Your notes</p>
+    <div>
+      <p className="text-xs uppercase tracking-[0.2em] text-ink-faint">
+        Your notes · Slide {slideNumber}
+      </p>
       <textarea
         value={annotation.note}
         onChange={(e) => onNoteChange(e.target.value)}
@@ -348,6 +364,12 @@ export function AnnotationPanel({
         placeholder="Jot a note for this slide…"
         className="mt-2 w-full resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm leading-relaxed placeholder:text-ink-faint focus:border-accent focus:outline-none"
       />
+
+      {annotation.highlights.length === 0 && (
+        <p className="mt-2 text-xs text-ink-faint">
+          Select text on a slide to highlight it.
+        </p>
+      )}
 
       {annotation.highlights.length > 0 && (
         <div className="mt-4">
@@ -388,5 +410,57 @@ export function AnnotationPanel({
         </div>
       )}
     </div>
+  );
+}
+
+/* ---------------- read-only roll-up (off the Slides view) ---------------- */
+
+export function NotesRollup({
+  annotations,
+  slides,
+  onJump,
+}: {
+  annotations: Record<number, SlideAnnotation>;
+  slides: { title: string }[];
+  onJump: (index: number) => void;
+}) {
+  const entries = rollupEntries(annotations, slides);
+
+  if (entries.length === 0) {
+    return (
+      <p className="text-sm text-ink-faint">
+        No notes yet. Open the Slides tab and select text to highlight, or jot a
+        note.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="space-y-2.5">
+      {entries.map((e) => (
+        <li key={e.index}>
+          <button
+            type="button"
+            onClick={() => onJump(e.index)}
+            className="w-full rounded-lg border border-line-soft px-3 py-2.5 text-left transition-colors hover:border-accent cursor-pointer"
+          >
+            <p className="font-mono text-[11px] text-ink-faint">
+              Slide {e.index + 1} · {e.title}
+            </p>
+            {e.note.trim() && (
+              <p className="mt-1 text-sm leading-snug text-ink-soft">{e.note}</p>
+            )}
+            {e.highlights.map((h) => (
+              <p key={h.id} className="mt-1.5 text-sm leading-snug">
+                <span className="anno-mark rounded px-1">{h.quote}</span>
+                {h.note && (
+                  <span className="mt-0.5 block text-xs text-ink-soft">{h.note}</span>
+                )}
+              </p>
+            ))}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

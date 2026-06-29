@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFieldPieces,
+  rollupEntries,
   validateSlideAnnotation,
   type Highlight,
+  type SlideAnnotation,
 } from "@/lib/annotations";
 
 function range(start: number, end: number, id = "h"): Pick<
@@ -121,5 +123,44 @@ describe("validateSlideAnnotation", () => {
     const v = validateSlideAnnotation(a);
     expect(v.note).toBe("spaced");
     expect(v.highlights[0].note).toBeUndefined();
+  });
+});
+
+describe("rollupEntries", () => {
+  const slides = [{ title: "Intro" }, { title: "Body" }, { title: "End" }];
+  const ann = (over: Partial<SlideAnnotation>): SlideAnnotation => ({
+    note: "",
+    highlights: [],
+    ...over,
+  });
+
+  it("returns [] when nothing is annotated", () => {
+    expect(rollupEntries({}, slides)).toEqual([]);
+  });
+
+  it("skips annotations that are blank-note and have no highlights", () => {
+    expect(rollupEntries({ 0: ann({ note: "   " }) }, slides)).toEqual([]);
+  });
+
+  it("includes a note-only slide", () => {
+    expect(rollupEntries({ 1: ann({ note: "hi" }) }, slides)).toEqual([
+      { index: 1, title: "Body", note: "hi", highlights: [] },
+    ]);
+  });
+
+  it("includes a highlight-only slide and sorts by index", () => {
+    const h = { id: "x", field: "title", start: 0, end: 2, quote: "In" };
+    const out = rollupEntries(
+      { 2: ann({ note: "z" }), 0: ann({ highlights: [h] }) },
+      slides
+    );
+    expect(out.map((e) => e.index)).toEqual([0, 2]);
+    expect(out[0]).toEqual({ index: 0, title: "Intro", note: "", highlights: [h] });
+  });
+
+  it("falls back to 'Slide N' when the slide is missing", () => {
+    expect(rollupEntries({ 5: ann({ note: "orphan" }) }, slides)).toEqual([
+      { index: 5, title: "Slide 6", note: "orphan", highlights: [] },
+    ]);
   });
 });
