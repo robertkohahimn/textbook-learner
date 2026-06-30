@@ -7,7 +7,7 @@ export type ProviderId = "claude-api" | "claude-cli" | "glm";
  */
 export function resolveActiveProviderId(
   selected: "claude" | "glm",
-  env: { ANTHROPIC_API_KEY?: string }
+  env: Record<string, string | undefined>
 ): ProviderId {
   if (selected === "glm") return "glm";
   return env.ANTHROPIC_API_KEY ? "claude-api" : "claude-cli";

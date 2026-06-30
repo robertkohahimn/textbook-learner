@@ -31,9 +31,7 @@ function construct(id: ProviderId): LlmProvider {
 export function getLlm(
   getSelected: () => "claude" | "glm" = getActiveProvider
 ): LlmProvider {
-  const id = resolveActiveProviderId(getSelected(), {
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-  });
+  const id = resolveActiveProviderId(getSelected(), process.env);
   let provider = cache.get(id);
   if (!provider) {
     provider = construct(id);
