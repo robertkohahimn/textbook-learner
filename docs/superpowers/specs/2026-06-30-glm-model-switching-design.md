@@ -209,10 +209,13 @@ narrowed to the union, defaulting to `"claude"` when absent or unrecognized.
   - `GLM_API_KEY` — required to enable/select GLM. Sent as `Authorization: Bearer`.
   - `GLM_MODEL` — default `glm-4.7`. **Must name a model GA and entitled on the user's
     z.ai plan** (the default is a current id as of 2026-06; verify against the plan).
-  - `GLM_BASE_URL` — default `https://api.z.ai/api/anthropic` (the general
-    Anthropic-compatible surface). z.ai also exposes a coding-plan surface,
-    `https://api.z.ai/api/coding/paas/v4`, which draws on a different quota/billing; set
-    this var to switch surfaces deliberately.
+  - `GLM_BASE_URL` — default `https://api.z.ai/api/anthropic`, z.ai's
+    Anthropic-compatible base URL (consumed by the Anthropic SDK). The default also serves
+    GLM Coding Plan keys — the plan is selected by the API key, not by a different Anthropic
+    URL. **Do not** set this to `https://api.z.ai/api/coding/paas/v4`: that is z.ai's
+    OpenAI-compatible surface (Chat Completions) and is incompatible with the Anthropic SDK.
+    (An earlier draft wrongly listed the coding URL as an alternate base — corrected
+    2026-06-30 per CodeRabbit review of PR #11.)
 
 ## Data flow (switching)
 
