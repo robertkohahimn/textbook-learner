@@ -164,6 +164,10 @@ CREATE TABLE IF NOT EXISTS slide_annotations (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (lesson_id, slide_index)
 );
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 declare global {
@@ -517,4 +521,33 @@ export function deleteSlideAnnotations(lessonId: string): void {
   getDb()
     .prepare(`DELETE FROM slide_annotations WHERE lesson_id = ?`)
     .run(lessonId);
+}
+
+// --- settings (app-wide key/value) ---
+
+export type ActiveProvider = "claude" | "glm";
+
+export function getSetting(key: string): string | undefined {
+  const row = getDb()
+    .prepare(`SELECT value FROM settings WHERE key = ?`)
+    .get(key) as { value: string } | undefined;
+  return row?.value;
+}
+
+export function setSetting(key: string, value: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(key, value);
+}
+
+export function getActiveProvider(): ActiveProvider {
+  // Any value other than "glm" (including absent or corrupt) means Claude.
+  return getSetting("active_provider") === "glm" ? "glm" : "claude";
+}
+
+export function setActiveProvider(provider: ActiveProvider): void {
+  setSetting("active_provider", provider);
 }
