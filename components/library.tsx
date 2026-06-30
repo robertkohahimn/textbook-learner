@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import type { BookListRow } from "@/lib/db";
+import { formatFromFilename } from "@/lib/book-format";
 import { usePoll } from "./use-poll";
 import { ProgressBar, Wordmark } from "./bits";
 
@@ -26,8 +27,8 @@ export function Library() {
 
   async function upload(file: File) {
     setUploadError(null);
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setUploadError("Folio reads PDF books — that file isn't one.");
+    if (!formatFromFilename(file.name)) {
+      setUploadError("Folio reads PDF and EPUB books — that file isn't one.");
       return;
     }
     const form = new FormData();
@@ -101,12 +102,12 @@ export function Library() {
           </span>
           <span className="text-sm font-medium">Add a book</span>
           <span className="text-xs text-ink-faint px-6 text-center">
-            drop a PDF here or click to browse
+            drop a PDF or EPUB here or click to browse
           </span>
           <input
             ref={inputRef}
             type="file"
-            accept="application/pdf,.pdf"
+            accept=".pdf,.epub,application/pdf,application/epub+zip"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
