@@ -72,9 +72,9 @@ contract as `lib/pdf.ts:extractBook`. Pipeline:
    `Σ originalSize` over the entries we *do* keep exceeds a **decompressed-bytes
    ceiling**. `originalSize` is a zip-header field and therefore attacker-
    controlled, so this is necessary but not sufficient — see the text-length
-   backstop in step 6 and the Error-handling zip-bomb row. (Confidence: `fflate`'s
-   `unzipSync` filter is decided pre-inflation; confirm the exact `UnzipFileInfo`
-   field name at build time.)
+   backstop in step 6 and the Error-handling zip-bomb row. (Verified: `fflate`'s
+   `unzipSync` filter runs pre-inflation, exposes `originalSize`, skips filtered-out
+   entries without decompressing them, and propagates a thrown error.)
 2. **Locate the OPF**: read `META-INF/container.xml`, parse with
    `fast-xml-parser`. `container.xml` may declare multiple `<rootfile>` (multi-
    rendition packages); select the **first `<rootfile>` whose
@@ -272,10 +272,17 @@ Add to `dependencies`: `fflate` (tiny, zero-dep zip) and `fast-xml-parser`. Both
 pure-JS, no native build — important given the repo's native-build sensitivity
 (`better-sqlite3` / pnpm history). Run with **npm** (`package-lock.json`).
 
-## Known artifact (accepted)
+## Known artifacts / limitations (accepted)
 
-`components/curriculum.tsx:102` renders `{book.num_pages} pages`. For EPUBs this is
-the **synthetic** page count, which won't match the print edition. Accepted as-is.
+- `components/curriculum.tsx:102` renders `{book.num_pages} pages`. For EPUBs this is
+  the **synthetic** page count, which won't match the print edition. Accepted as-is.
+- **Single-file / anchor-only EPUBs**: outline mapping is document-granular (anchors
+  ignored, per the page-model decision). When a book's chapters live in one content
+  document addressed only by `#fragment` (common for Project Gutenberg), every TOC
+  entry collapses to page 1 and the outline gives no positional signal — the curriculum
+  falls back to per-page excerpts alone. Accepted; a future fast-follow could split a
+  content document at its TOC-referenced `id=` positions into forced-break segments to
+  recover chapter-granular pages.
 
 ## Out of scope (YAGNI)
 

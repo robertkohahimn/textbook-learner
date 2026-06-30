@@ -316,7 +316,7 @@ export function xhtmlToText(xml: string): string {
   // 4. Decode entities.
   s = decodeEntities(s);
   // 5. Normalize whitespace: horizontal runs (incl. nbsp) -> single space; tidy newlines.
-  s = s.replace(/[ \t\f\v ]+/g, " ");
+  s = s.replace(/[ \t\f\v\u00A0]+/g, " ");
   s = s.replace(/ *\n */g, "\n");
   s = s.replace(/\n{3,}/g, "\n\n");
   return s.trim();
@@ -363,11 +363,13 @@ describe("paginate", () => {
     expect(docStartPage).toEqual([0, 1]);
   });
 
-  it("chunks a long document into multiple pages at paragraph boundaries", () => {
-    const doc = [para(1000, "a"), para(1000, "b"), para(1000, "c")].join("\n\n");
+  it("packs paragraphs up to pageChars, breaking at paragraph boundaries", () => {
+    // Three 700-char paragraphs: 700+700 (=1402 incl. separator) fits page 1; the
+    // third spills to page 2. Two paragraphs of 1000 would NOT co-locate (2002 > 1800).
+    const doc = [para(700, "a"), para(700, "b"), para(700, "c")].join("\n\n");
     const { pages, docStartPage } = paginate([doc], { pageChars: 1800 });
     expect(docStartPage).toEqual([0]);
-    expect(pages.length).toBe(2); // ~3000 chars / 1800
+    expect(pages.length).toBe(2); // [1402, 700]
     expect(pages.every((p) => p.length <= 1800)).toBe(true);
   });
 
@@ -546,12 +548,25 @@ function opf(opts: { nav?: boolean; ncx?: boolean }): string {
 </package>`;
 }
 
+// Realistic nav: a toc nav PLUS landmarks + page-list. The extractor must read ONLY
+// the toc nav — landmarks/page-list anchors point at real content docs and would
+// otherwise pollute the outline. chap2 uses a single-quoted href on purpose.
 const NAV = `<?xml version="1.0"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
-  <body><nav epub:type="toc"><ol>
+  <body>
+  <nav epub:type="toc"><ol>
     <li><a href="chap1.xhtml">Chapter&#160;One</a></li>
-    <li><a href="chap2.xhtml">Chapter Two</a></li>
-  </ol></nav></body>
+    <li><a href='chap2.xhtml'>Chapter Two</a></li>
+  </ol></nav>
+  <nav epub:type="landmarks"><ol>
+    <li><a epub:type="bodymatter" href="chap1.xhtml">Start of Content</a></li>
+    <li><a epub:type="cover" href="cover.xhtml">Cover</a></li>
+  </ol></nav>
+  <nav epub:type="page-list"><ol>
+    <li><a href="chap1.xhtml#p1">1</a></li>
+    <li><a href="chap2.xhtml#p2">2</a></li>
+  </ol></nav>
+  </body>
 </html>`;
 
 const NCX = `<?xml version="1.0"?>
@@ -585,7 +600,9 @@ describe("extractEpub", () => {
     expect(book.pages.join("\n")).not.toContain("front matter");
 
     const titles = book.outline.map((o) => o.title);
-    expect(titles).toEqual(["Chapter One", "Chapter Two"]); // &#160; decoded to nbsp then collapsed
+    // Exactly two: &#160; decoded+collapsed, single-quoted chap2 captured, and the
+    // landmarks/page-list navs ("Start of Content", "Cover", "1", "2") excluded.
+    expect(titles).toEqual(["Chapter One", "Chapter Two"]);
     expect(book.outline[0].page).toBe(1); // chap1 is the first linear doc
     expect(book.outline[1].page!).toBeGreaterThan(book.outline[0].page!);
   });
@@ -835,6 +852,11 @@ export async function extractEpub(buf: Uint8Array): Promise<ExtractedBook> {
   }
 
   // 8. Map TOC entries to synthetic page numbers (document-granular, 1-based).
+  // KNOWN LIMITATION: anchors (#fragment) are ignored, so every TOC entry resolves to
+  // its CONTAINER document's start page. For single-file EPUBs (whole book in one
+  // content doc — common for Project Gutenberg), all entries collapse to page 1 and the
+  // outline gives no positional signal; the curriculum then leans on per-page excerpts.
+  // This is the accepted spec trade-off (anchor resolution deliberately out of scope).
   const hrefToPage = new Map<string, number>();
   docHrefs.forEach((href, i) => hrefToPage.set(href, docStartPage[i] + 1));
 
@@ -848,15 +870,24 @@ export async function extractEpub(buf: Uint8Array): Promise<ExtractedBook> {
   return { title, author, numPages: pages.length, pages, outline };
 }
 
-/** Extract ordered TOC anchors from an EPUB3 nav document. */
+/**
+ * Extract ordered TOC anchors from an EPUB3 nav document.
+ * IMPORTANT: a nav doc contains several <nav> sections (toc, landmarks, page-list).
+ * Scope extraction to the `epub:type="toc"` nav only — landmarks/page-list anchors
+ * point at real content docs and would otherwise flood the outline. Fall back to the
+ * whole document only if no typed toc nav exists. Accept single- or double-quoted href.
+ */
 function parseNav(xhtml: string, baseDir: string): { title: string; href: string }[] {
+  const tocNav = /<nav\b[^>]*epub:type\s*=\s*"[^"]*\btoc\b[^"]*"[^>]*>([\s\S]*?)<\/nav>/i.exec(xhtml);
+  const scope = tocNav ? tocNav[1] : xhtml;
+
   const entries: { title: string; href: string }[] = [];
-  const re = /<a\b[^>]*\shref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const re = /<a\b[^>]*\shref=(?:"([^"]+)"|'([^']+)')[^>]*>([\s\S]*?)<\/a>/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(xhtml)) !== null) {
-    const rawHref = m[1].split("#")[0];
+  while ((m = re.exec(scope)) !== null) {
+    const rawHref = (m[1] ?? m[2]).split("#")[0];
     if (!rawHref) continue;
-    const title = decodeEntities(m[2].replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+    const title = decodeEntities(m[3].replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
     if (!title) continue;
     entries.push({ title, href: resolvePath(baseDir, rawHref) });
   }
