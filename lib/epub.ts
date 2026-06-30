@@ -1,4 +1,4 @@
-import { unzipSync, type Unzipped } from "fflate";
+import { Unzip, UnzipInflate, type Unzipped } from "fflate";
 import { XMLParser } from "fast-xml-parser";
 import { decodeEntities, xhtmlToText } from "./epub-text";
 import { paginate } from "./epub-paginate";
@@ -17,6 +17,7 @@ const parser = new XMLParser({
   // Keep namespace prefixes (dc:title, etc.) as-is.
 });
 
+/** Normalize fast-xml-parser output (single node vs array vs absent) to an array. */
 function asArray<T>(x: T | T[] | undefined): T[] {
   if (x === undefined || x === null) return [];
   return Array.isArray(x) ? x : [x];
@@ -44,6 +45,7 @@ function resolvePath(baseDir: string, rel: string): string {
   return stack.join("/");
 }
 
+/** Directory portion of a zip path ("" if top-level). */
 function dirOf(p: string): string {
   const i = p.lastIndexOf("/");
   return i === -1 ? "" : p.slice(0, i);
@@ -54,6 +56,47 @@ function readText(zip: Unzipped, path: string): string | null {
   return bytes ? TEXT_DECODER.decode(bytes) : null;
 }
 
+/**
+ * Stream-unzip only the entries we parse (META-INF + XML/XHTML), enforcing a ceiling on
+ * the ACTUAL number of decompressed bytes emitted. Unlike `unzipSync`'s declared-size
+ * filter (`originalSize` is attacker-controlled header metadata), this bounds real output,
+ * so a zip bomb that under-reports its sizes still aborts mid-inflation before exhausting
+ * memory. Non-content entries (fonts, images, css, a/v) are never started, so never inflated.
+ */
+export function unzipBounded(buf: Uint8Array, maxBytes: number): Unzipped {
+  const out: Unzipped = {};
+  let total = 0;
+  const unzip = new Unzip((file) => {
+    const keep = file.name.startsWith("META-INF/") || KEPT_EXT.test(file.name);
+    if (!keep) return; // never call start() => this entry is not decompressed
+    const parts: Uint8Array[] = [];
+    file.ondata = (err, chunk, final) => {
+      if (err) throw err;
+      if (chunk && chunk.length) {
+        total += chunk.length;
+        if (total > maxBytes) {
+          throw new Error("EPUB_TOO_LARGE: decompressed output exceeds the allowed limit");
+        }
+        parts.push(chunk);
+      }
+      if (final) {
+        const size = parts.reduce((n, p) => n + p.length, 0);
+        const merged = new Uint8Array(size);
+        let off = 0;
+        for (const p of parts) {
+          merged.set(p, off);
+          off += p.length;
+        }
+        out[file.name] = merged;
+      }
+    };
+    file.start();
+  });
+  unzip.register(UnzipInflate);
+  unzip.push(buf, true);
+  return out;
+}
+
 interface ManifestItem {
   id: string;
   href: string; // absolute (zip-root-relative)
@@ -61,21 +104,14 @@ interface ManifestItem {
   properties: string;
 }
 
+/**
+ * Extract an EPUB into the shared `ExtractedBook` shape (same contract as the PDF path).
+ * Throws `NO_TEXT:` (too little text), `EPUB_DRM:` (a linear content doc is encrypted),
+ * `EPUB_TOO_LARGE:` (decompression ceiling), or `EPUB_INVALID:` (missing/malformed OPF).
+ */
 export async function extractEpub(buf: Uint8Array): Promise<ExtractedBook> {
-  // 1. Unzip, skipping non-parsed resources and budgeting declared decompressed size.
-  let budget = 0;
-  const zip = unzipSync(buf, {
-    filter: (file) => {
-      const keep = file.name.startsWith("META-INF/") || KEPT_EXT.test(file.name);
-      if (keep) {
-        budget += file.originalSize;
-        if (budget > MAX_DECOMPRESSED_BYTES) {
-          throw new Error("EPUB_TOO_LARGE: declared decompressed size exceeds the allowed limit");
-        }
-      }
-      return keep;
-    },
-  });
+  // 1. Unzip only the entries we parse, bounding ACTUAL decompressed bytes (zip-bomb safe).
+  const zip = unzipBounded(buf, MAX_DECOMPRESSED_BYTES);
 
   // 2. container.xml -> OPF path (first OEBPS-package rootfile).
   const containerXml = readText(zip, "META-INF/container.xml");
@@ -172,8 +208,12 @@ export async function extractEpub(buf: Uint8Array): Promise<ExtractedBook> {
   // content doc — common for Project Gutenberg), all entries collapse to page 1 and the
   // outline gives no positional signal; the curriculum then leans on per-page excerpts.
   // This is the accepted spec trade-off (anchor resolution deliberately out of scope).
+  // Clamp to the valid range: a text-less (e.g. trailing empty) linear doc has
+  // docStartPage[i] === pages.length, which would otherwise yield numPages + 1.
   const hrefToPage = new Map<string, number>();
-  docHrefs.forEach((href, i) => hrefToPage.set(href, docStartPage[i] + 1));
+  docHrefs.forEach((href, i) =>
+    hrefToPage.set(href, Math.min(docStartPage[i] + 1, pages.length))
+  );
 
   const outline: OutlineItem[] = [];
   for (const entry of tocEntries) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { zipSync, strToU8 } from "fflate";
-import { extractEpub } from "@/lib/epub";
+import { extractEpub, unzipBounded } from "@/lib/epub";
 
 type Files = Record<string, string>;
 
@@ -167,6 +167,30 @@ describe("extractEpub", () => {
     });
     const book = await extractEpub(epub);
     expect(book.pages.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("unzipBounded (zip-bomb guard)", () => {
+  it("aborts on ACTUAL decompressed output growth, not declared size", () => {
+    // ~6 MB of highly-compressible text compresses to a few KB — a stand-in for a bomb
+    // whose declared size could be spoofed small. The guard counts real bytes emitted.
+    const zip = zipSync({
+      "META-INF/container.xml": strToU8("<c/>"),
+      "OEBPS/content.opf": strToU8("a".repeat(6_000_000)),
+    });
+    expect(zip.length).toBeLessThan(1_000_000);
+    expect(() => unzipBounded(zip, 1_000_000)).toThrow(/EPUB_TOO_LARGE/);
+  });
+
+  it("never inflates non-content entries (fonts/images skipped)", () => {
+    const zip = zipSync({
+      "META-INF/container.xml": strToU8("<c/>"),
+      "OEBPS/content.opf": strToU8("<package/>"),
+      "OEBPS/cover.png": strToU8("x".repeat(500_000)),
+      "OEBPS/font.otf": strToU8("y".repeat(500_000)),
+    });
+    const out = unzipBounded(zip, 50_000_000);
+    expect(Object.keys(out).sort()).toEqual(["META-INF/container.xml", "OEBPS/content.opf"]);
   });
 });
 
