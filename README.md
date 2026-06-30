@@ -58,6 +58,21 @@ Every lesson gets a full slide deck, not just bullet lists:
 | `LLM_MODEL`         | `sonnet`           | Model for generation (CLI alias or full API id)  |
 | `DATA_DIR`          | `./data`           | Where the SQLite DB and uploaded PDFs live       |
 
+### GLM (Zhipu AI) as an alternative model
+
+Folio can use GLM via z.ai's Anthropic-compatible endpoint. Switch models at runtime on
+the **Settings** page (`/settings`); the choice is global and applies to curriculum,
+slides, quizzes, and the tutor.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `GLM_API_KEY` | _(unset)_ | z.ai API key. Required to enable/select GLM. Sent as `Authorization: Bearer`. |
+| `GLM_MODEL` | `glm-4.7` | GLM model id. Must be GA and entitled on your z.ai plan. |
+| `GLM_BASE_URL` | `https://api.z.ai/api/anthropic` | z.ai Anthropic-compatible base URL. Use `https://api.z.ai/api/coding/paas/v4` for the coding-plan quota. |
+
+With no `GLM_API_KEY`, the GLM option is disabled in Settings and Folio behaves exactly
+as before (Anthropic API when `ANTHROPIC_API_KEY` is set, otherwise the local `claude` CLI).
+
 ## Data layout
 
 ```
