@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import * as db from "./db";
 import { extractBook } from "./pdf";
+import { extractEpub } from "./epub";
+import { formatFromFilename } from "./book-format";
 import { generateCurriculum } from "./curriculum";
 import { DEFAULT_DECK_OPTIONS } from "./deck";
 import { generateMaterials } from "./materials";
@@ -89,7 +91,10 @@ async function processBook(bookId: string): Promise<void> {
     const buf = new Uint8Array(
       readFileSync(path.join(uploadsDir(), book.filename))
     );
-    const extracted = await extractBook(buf);
+    const extracted =
+      formatFromFilename(book.filename) === "epub"
+        ? await extractEpub(buf)
+        : await extractBook(buf);
     db.insertPages(bookId, extracted.pages);
     db.updateBook(bookId, {
       title: extracted.title ?? book.title,
@@ -120,8 +125,14 @@ async function processBook(bookId: string): Promise<void> {
       status: "error",
       stage: null,
       error: message.startsWith("NO_TEXT")
-        ? "This PDF has no extractable text — it may be a scanned book, which isn't supported yet."
-        : message,
+        ? "This book has no extractable text — it may be a scanned or secured book, which isn't supported yet."
+        : message.startsWith("EPUB_DRM")
+          ? "This EPUB is DRM-protected, so it can't be read."
+          : message.startsWith("EPUB_TOO_LARGE")
+            ? "This EPUB is too large to process."
+            : message.startsWith("EPUB_INVALID")
+              ? "This EPUB couldn't be read — the file may be corrupt."
+              : message,
     });
   }
 }
