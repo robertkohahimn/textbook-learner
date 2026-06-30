@@ -12,7 +12,7 @@ export type SettingsState = {
 
 /** Claude is always available (it falls back to the local CLI); GLM needs a key. */
 export function providerInfos(
-  env: { GLM_API_KEY?: string } = process.env as { GLM_API_KEY?: string }
+  env: Record<string, string | undefined> = process.env
 ): ProviderInfo[] {
   return [
     { id: "claude", label: "Claude", available: true },
@@ -22,7 +22,7 @@ export function providerInfos(
 
 export function isProviderAvailable(
   id: string,
-  env: { GLM_API_KEY?: string } = process.env as { GLM_API_KEY?: string }
+  env: Record<string, string | undefined> = process.env
 ): boolean {
   return providerInfos(env).some((p) => p.id === id && p.available);
 }
