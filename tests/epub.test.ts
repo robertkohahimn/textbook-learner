@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { zipSync, strToU8 } from "fflate";
 import { extractEpub } from "@/lib/epub";
 
@@ -166,4 +168,22 @@ describe("extractEpub", () => {
     const book = await extractEpub(epub);
     expect(book.pages.length).toBeGreaterThanOrEqual(2);
   });
+});
+
+const REAL_EPUB = path.join(__dirname, "fixtures", "alice.epub");
+
+describe.skipIf(!existsSync(REAL_EPUB))("extractEpub (real fixture)", () => {
+  it("extracts clean text and an outline from a real EPUB", async () => {
+    const book = await extractEpub(new Uint8Array(readFileSync(REAL_EPUB)));
+    expect(book.title).toBeTruthy();
+    expect(book.pages.length).toBeGreaterThan(3);
+    const joined = book.pages.join("\n");
+    expect(joined).not.toMatch(/<[^>]+>/); // no residual tags
+    expect(joined).not.toMatch(/&[a-zA-Z]+;/); // no residual named entities
+    expect(book.pages.every((p) => p.trim().length > 0)).toBe(true); // no empty pages
+    expect(book.outline.length).toBeGreaterThan(0);
+    // Fixture-scoped only (NOT a general invariant): this book's TOC follows spine order.
+    const pages = book.outline.map((o) => o.page).filter((p): p is number => p !== null);
+    expect([...pages].sort((a, b) => a - b)).toEqual(pages);
+  }, 30_000);
 });
