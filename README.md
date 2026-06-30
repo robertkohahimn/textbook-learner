@@ -68,7 +68,7 @@ slides, quizzes, and the tutor.
 |----------|---------|---------|
 | `GLM_API_KEY` | _(unset)_ | z.ai API key. Required to enable/select GLM. Sent as `Authorization: Bearer`. |
 | `GLM_MODEL` | `glm-4.7` | GLM model id. Must be GA and entitled on your z.ai plan. |
-| `GLM_BASE_URL` | `https://api.z.ai/api/anthropic` | z.ai Anthropic-compatible base URL. Use `https://api.z.ai/api/coding/paas/v4` for the coding-plan quota. |
+| `GLM_BASE_URL` | `https://api.z.ai/api/anthropic` | z.ai's Anthropic-compatible base URL (used by the Anthropic SDK). The default also serves GLM Coding Plan keys — the plan is selected by the key, not a different URL. Do not point this at `…/api/coding/paas/v4`; that is z.ai's OpenAI-compatible surface and is incompatible with the Anthropic SDK. |
 
 With no `GLM_API_KEY`, the GLM option is disabled in Settings and Folio behaves exactly
 as before (Anthropic API when `ANTHROPIC_API_KEY` is set, otherwise the local `claude` CLI).

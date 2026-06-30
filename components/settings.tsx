@@ -13,21 +13,27 @@ export function Settings({ initial }: { initial: SettingsState }) {
   async function save() {
     setSaving(true);
     setStatus(null);
-    const res = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ provider: choice }),
-    });
-    setSaving(false);
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setStatus(body.error ?? "Couldn't save — try again.");
-      return;
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: choice }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setStatus(body.error ?? "Couldn't save — try again.");
+        return;
+      }
+      const next = (await res.json()) as SettingsState;
+      setActive(next.active);
+      setChoice(next.active);
+      setStatus("Saved.");
+    } catch {
+      // Network failure before any response (e.g. the backend proxy is down).
+      setStatus("Couldn't save — try again.");
+    } finally {
+      setSaving(false);
     }
-    const next = (await res.json()) as SettingsState;
-    setActive(next.active);
-    setChoice(next.active);
-    setStatus("Saved.");
   }
 
   return (
