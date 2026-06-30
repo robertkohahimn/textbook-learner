@@ -1,16 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { SettingsState } from "@/lib/settings";
 
-export function Settings({ initial }: { initial: SettingsState }) {
-  const [active, setActive] = useState(initial.active);
-  const [choice, setChoice] = useState(initial.active);
+export function Settings() {
+  // Load state from the API (proxied to the backend in the split deployment),
+  // not from the DB at render time — the frontend has no database.
+  const [state, setState] = useState<SettingsState | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [choice, setChoice] = useState<"claude" | "glm" | null>(null);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<SettingsState>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setState(data);
+        setChoice(data.active);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function save() {
+    if (!choice) return;
     setSaving(true);
     setStatus(null);
     try {
@@ -25,7 +49,7 @@ export function Settings({ initial }: { initial: SettingsState }) {
         return;
       }
       const next = (await res.json()) as SettingsState;
-      setActive(next.active);
+      setState(next);
       setChoice(next.active);
       setStatus("Saved.");
     } catch {
@@ -39,57 +63,70 @@ export function Settings({ initial }: { initial: SettingsState }) {
   return (
     <section className="rise mt-10 max-w-md">
       <h1 className="font-display text-3xl font-medium tracking-tight">Settings</h1>
-      <p className="mt-2 text-ink-soft">Choose which AI model Folio uses for everything — curriculum, slides, quizzes, and the tutor.</p>
+      <p className="mt-2 text-ink-soft">
+        Choose which AI model Folio uses for everything — curriculum, slides,
+        quizzes, and the tutor.
+      </p>
 
-      <fieldset className="mt-8">
-        <legend className="text-xs uppercase tracking-[0.18em] text-ink-faint">
-          AI model
-        </legend>
-        <div className="mt-4 flex flex-col gap-3">
-          {initial.providers.map((p) => (
-            <label
-              key={p.id}
-              className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
-                p.available
-                  ? "border-line hover:border-ink-faint cursor-pointer"
-                  : "border-line opacity-60 cursor-not-allowed"
-              } ${choice === p.id ? "border-accent bg-paper-raised" : ""}`}
+      {loadError ? (
+        <p role="alert" className="mt-8 text-sm text-bad">
+          Couldn&apos;t load settings — reload to try again.
+        </p>
+      ) : !state ? (
+        <p className="mt-8 text-sm text-ink-faint">Loading…</p>
+      ) : (
+        <>
+          <fieldset className="mt-8">
+            <legend className="text-xs uppercase tracking-[0.18em] text-ink-faint">
+              AI model
+            </legend>
+            <div className="mt-4 flex flex-col gap-3">
+              {state.providers.map((p) => (
+                <label
+                  key={p.id}
+                  className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${
+                    p.available
+                      ? "border-line hover:border-ink-faint cursor-pointer"
+                      : "border-line opacity-60 cursor-not-allowed"
+                  } ${choice === p.id ? "border-accent bg-paper-raised" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="provider"
+                    value={p.id}
+                    checked={choice === p.id}
+                    disabled={!p.available}
+                    onChange={() => setChoice(p.id)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium">{p.label}</span>
+                    <span className="block text-sm text-ink-faint">
+                      {p.id === "glm"
+                        ? p.available
+                          ? "Zhipu GLM via z.ai."
+                          : "Set GLM_API_KEY to enable."
+                        : "Anthropic Claude (API key, or the local Claude CLI)."}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="mt-6 flex items-center gap-4">
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving || choice === state.active}
+              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              <input
-                type="radio"
-                name="provider"
-                value={p.id}
-                checked={choice === p.id}
-                disabled={!p.available}
-                onChange={() => setChoice(p.id)}
-                className="mt-1"
-              />
-              <span>
-                <span className="block font-medium">{p.label}</span>
-                <span className="block text-sm text-ink-faint">
-                  {p.id === "glm"
-                    ? p.available
-                      ? "Zhipu GLM via z.ai."
-                      : "Set GLM_API_KEY to enable."
-                    : "Anthropic Claude (API key, or the local Claude CLI)."}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <div className="mt-6 flex items-center gap-4">
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || choice === active}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-ink disabled:opacity-50 cursor-pointer"
-        >
-          {saving ? "Saving…" : "Save"}
-        </button>
-        {status && <span className="text-sm text-ink-soft">{status}</span>}
-      </div>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            {status && <span className="text-sm text-ink-soft">{status}</span>}
+          </div>
+        </>
+      )}
 
       <Link
         href="/"
