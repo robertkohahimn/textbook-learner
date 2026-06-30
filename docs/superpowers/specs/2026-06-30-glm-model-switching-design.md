@@ -71,21 +71,29 @@ export class AnthropicCompatibleProvider implements LlmProvider {
 
 ```ts
 const BASE_URL = process.env.GLM_BASE_URL ?? "https://api.z.ai/api/anthropic";
-const MODEL = process.env.GLM_MODEL ?? "glm-4.6";
+// Plan-dependent. Must name a model that is GA and entitled on the user's z.ai plan.
+// As of 2026-06 the current line is GLM-4.7 / GLM-5.2; glm-4.6 is a prior generation.
+const MODEL = process.env.GLM_MODEL ?? "glm-4.7";
 
 export class GlmProvider extends AnthropicCompatibleProvider {
   constructor() {
     const key = process.env.GLM_API_KEY;
     if (!key) throw new Error("GLM_API_KEY is not set. Set it to use GLM.");
-    super(new Anthropic({ baseURL: BASE_URL, apiKey: key }), MODEL);
+    // z.ai authenticates via `Authorization: Bearer` (its ANTHROPIC_AUTH_TOKEN), NOT
+    // `x-api-key`. Use the SDK's `authToken`. Pass `apiKey: null` explicitly so the SDK
+    // does not ALSO read a process-level ANTHROPIC_API_KEY and attach `x-api-key`,
+    // which would send two conflicting auth headers (and leak Claude's key to z.ai).
+    super(new Anthropic({ baseURL: BASE_URL, apiKey: null, authToken: key }), MODEL);
   }
 }
 ```
 
-**Auth-header caveat (verify during implementation):** the Anthropic SDK's `apiKey`
-sends `x-api-key`; some z.ai docs use `Authorization: Bearer` (SDK `authToken`). Confirm
-against z.ai's current docs and use whichever the endpoint requires (swap `apiKey` for
-`authToken` if needed). This is the one external unknown.
+**Authentication (verified against z.ai docs).** z.ai's Anthropic-compatible endpoint
+authenticates with `Authorization: Bearer <key>` (`ANTHROPIC_AUTH_TOKEN`), the same
+mechanism Claude Code uses against it — **not** `x-api-key`. The SDK's `apiKey` option
+emits `x-api-key`, so it is the wrong option here; `authToken` is correct. `apiKey` is
+explicitly nulled to suppress the SDK's env-default `x-api-key` when `ANTHROPIC_API_KEY`
+is also present (the Claude-API config). This is no longer an open unknown.
 
 **Dynamic resolution.** Add a pure function and make `getLlm()` read the setting each
 call, memoizing one instance per resolved id:
@@ -105,9 +113,14 @@ export function resolveActiveProviderId(
 ```ts
 // lib/llm/index.ts
 const cache = new Map<ProviderId, LlmProvider>();
-export function getLlm(): LlmProvider {
-  const selected = getActiveProvider();          // DB setting, default "claude"
-  const id = resolveActiveProviderId(selected, process.env);
+
+// Selector is injected, not imported, so lib/llm stays free of a lib/db dependency and
+// remains unit-testable without an initialized SQLite database. The DB-backed default is
+// wired at the composition root; tests pass a stub.
+export function getLlm(
+  getSelected: () => "claude" | "glm" = getActiveProvider,
+): LlmProvider {
+  const id = resolveActiveProviderId(getSelected(), process.env);
   let p = cache.get(id);
   if (!p) { p = construct(id); cache.set(id, p); }
   return p;
@@ -120,6 +133,12 @@ is a synchronous sub-ms SELECT, so runtime switching needs no restart and no man
 invalidation. In-flight jobs keep their already-constructed provider; the next job picks
 up the new selection. (The serial in-process job queue means at most one generation is in
 flight at a time.)
+
+**Layer boundary.** `getActiveProvider` is the *default* selector but is injected as a
+parameter rather than imported at the top of `lib/llm/index.ts`, so the LLM module does
+not statically depend on `lib/db.ts`. This preserves `lib/llm`'s isolation: `getLlm()`
+can be exercised in tests with a stub selector and no database. The DB-backed default is
+bound at the call sites / composition root.
 
 ### 2. Persistence (`lib/db.ts`)
 
@@ -180,13 +199,20 @@ narrowed to the union, defaulting to `"claude"` when absent or unrecognized.
 
 ### 5. Health + environment
 
-- **`app/api/health/route.ts`** — report the resolved active provider
-  (`"claude-api" | "claude-cli" | "glm"`) using `getActiveProvider()` +
-  `resolveActiveProviderId()`, instead of the current env-only check.
+- **`app/api/health/route.ts`** — report the resolved active provider using
+  `getActiveProvider()` + `resolveActiveProviderId()`, instead of the current env-only
+  check. **Preserve the existing external label strings** to avoid breaking any consumer
+  keying on them: map the internal `ProviderId` → health label as
+  `"claude-api" → "anthropic-api"`, `"claude-cli" → "claude-cli"`, `"glm" → "glm"`. The
+  internal enum is not leaked to the response.
 - **New env vars** (documented in README):
-  - `GLM_API_KEY` — required to enable/select GLM.
-  - `GLM_MODEL` — default `glm-4.6`.
-  - `GLM_BASE_URL` — default `https://api.z.ai/api/anthropic`.
+  - `GLM_API_KEY` — required to enable/select GLM. Sent as `Authorization: Bearer`.
+  - `GLM_MODEL` — default `glm-4.7`. **Must name a model GA and entitled on the user's
+    z.ai plan** (the default is a current id as of 2026-06; verify against the plan).
+  - `GLM_BASE_URL` — default `https://api.z.ai/api/anthropic` (the general
+    Anthropic-compatible surface). z.ai also exposes a coding-plan surface,
+    `https://api.z.ai/api/coding/paas/v4`, which draws on a different quota/billing; set
+    this var to switch surfaces deliberately.
 
 ## Data flow (switching)
 
@@ -216,9 +242,19 @@ narrowed to the union, defaulting to `"claude"` when absent or unrecognized.
   `glm`+no key → `glm`, with the constructor guard tested separately).
 - `getSetting` / `setSetting` / `getActiveProvider` — round-trip and default behavior
   against a temp `DATA_DIR`.
+- `getLlm()` with a stub selector — asserts `"glm" → GlmProvider` etc. without a DB
+  (enabled by the injected selector; see Layer boundary above).
 - Provider network calls remain manually verified (consistent with the currently untested
   `anthropic.ts`). Component/route behavior verified by `tsc --noEmit`, `next build`, and
   manual run, per the project's test conventions.
+
+**Mandatory GLM integration smoke test (definition of done).** Before this is considered
+complete, run one real streamed tutor call with `active_provider = "glm"` against z.ai and
+assert the stream yields **non-empty** text. Rationale: `stream()` filters strictly for
+`content_block_delta` / `text_delta`; if z.ai's SSE schema deviates, streaming silently
+yields nothing with no error. This must be empirically confirmed, not assumed. A one-shot
+`generate()` call against z.ai is a secondary check (validates auth + model id + base URL
+end to end).
 
 ## Out of scope (YAGNI)
 
