@@ -30,3 +30,21 @@ describe.skipIf(!process.env.LIVE || !process.env.GLM_API_KEY)(
     });
   }
 );
+
+// Live streaming check — the feature's definition-of-done guard against a silent
+// empty stream if z.ai's SSE event shape differs from Anthropic's.
+describe.skipIf(!process.env.LIVE || !process.env.GLM_API_KEY)(
+  "GlmProvider (live streaming)",
+  () => {
+    it("streams a non-empty completion via z.ai", async () => {
+      const { GlmProvider } = await import("@/lib/llm/glm");
+      const chunks: string[] = [];
+      for await (const chunk of new GlmProvider().stream(
+        "Reply with exactly the word OK and nothing else."
+      )) {
+        chunks.push(chunk);
+      }
+      expect(chunks.join("").trim().length).toBeGreaterThan(0);
+    });
+  }
+);
