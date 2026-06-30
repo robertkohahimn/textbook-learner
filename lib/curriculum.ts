@@ -74,7 +74,7 @@ export function buildCurriculumPrompt(
 
 BOOK: "${book.title}"${book.author ? ` by ${book.author}` : ""} — ${book.numPages} pages.
 
-TABLE OF CONTENTS (from the PDF outline):
+TABLE OF CONTENTS (from the book outline):
 ${outlineText}
 
 PER-PAGE EXCERPTS (first ${EXCERPT_CHARS} characters of each page, for orientation):
@@ -88,7 +88,7 @@ Rules:
 - Lessons must not overlap and should progress through the book in order.
 - Skip front matter (cover, table of contents, acknowledgments) and back matter (index, bibliography).
 - Lesson titles should be specific and engaging; summaries one sentence each.
-- Use the printed page positions [p.N] above for pageStart/pageEnd (PDF page numbers, 1-based).
+- Use the printed page positions [p.N] above for pageStart/pageEnd (page numbers, 1-based).
 
 Output ONLY this JSON, no other text:
 {

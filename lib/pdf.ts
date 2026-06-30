@@ -1,20 +1,7 @@
 import { extractText, getDocumentProxy } from "unpdf";
+import { MIN_TEXT_CHARS, type ExtractedBook, type OutlineItem } from "./extracted";
 
-export interface OutlineItem {
-  title: string;
-  page: number | null;
-}
-
-export interface ExtractedBook {
-  title: string | null;
-  author: string | null;
-  numPages: number;
-  /** Index 0 = page 1. */
-  pages: string[];
-  outline: OutlineItem[];
-}
-
-const MIN_TEXT_CHARS = 500;
+export type { ExtractedBook, OutlineItem } from "./extracted";
 
 export async function extractBook(buf: Uint8Array): Promise<ExtractedBook> {
   const pdf = await getDocumentProxy(buf);
