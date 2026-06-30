@@ -65,11 +65,21 @@ export const MIN_TEXT_CHARS = 500;
 `extractEpub(buf: Uint8Array): Promise<ExtractedBook>` — same signature and return
 contract as `lib/pdf.ts:extractBook`. Pipeline:
 
-1. **Unzip** with `fflate.unzipSync`. Enforce a **decompressed-bytes ceiling**
-   (see Error handling — zip-bomb guard) while/after inflating.
+1. **Unzip** with `fflate.unzipSync(buf, { filter })`. The `filter` receives each
+   entry's declared metadata (`{ name, size, originalSize, compression }`)
+   **before** that entry is decompressed: skip non-content resources (fonts,
+   images, audio, video) so they're never inflated, and reject the file if
+   `Σ originalSize` over the entries we *do* keep exceeds a **decompressed-bytes
+   ceiling**. `originalSize` is a zip-header field and therefore attacker-
+   controlled, so this is necessary but not sufficient — see the text-length
+   backstop in step 6 and the Error-handling zip-bomb row. (Confidence: `fflate`'s
+   `unzipSync` filter is decided pre-inflation; confirm the exact `UnzipFileInfo`
+   field name at build time.)
 2. **Locate the OPF**: read `META-INF/container.xml`, parse with
-   `fast-xml-parser`, take `<rootfile full-path>`. Do **not** assume
-   `OEBPS/content.opf`.
+   `fast-xml-parser`. `container.xml` may declare multiple `<rootfile>` (multi-
+   rendition packages); select the **first `<rootfile>` whose
+   `media-type="application/oebps-package+xml"`**, not merely "the rootfile". Do
+   **not** assume `OEBPS/content.opf`.
 3. **Parse the OPF** with `fast-xml-parser`:
    - metadata: `dc:title` (first), `dc:creator` (first, prefer `opf:role="aut"`).
    - manifest: map `id → { href, media-type, properties }` (href resolved
@@ -79,18 +89,31 @@ contract as `lib/pdf.ts:extractBook`. Pipeline:
 4. **Resolve the TOC**: EPUB3 nav doc (manifest item with `properties="nav"`) or
    EPUB2 `toc.ncx` (manifest item `media-type=application/x-dtbncx+xml`), selected
    by manifest — not by filename. Parse to a flat list of `{ title, href, anchor }`.
+   The nav doc **is XHTML** and NCX titles can carry named entities (`&nbsp;`,
+   `&mdash;`); `fast-xml-parser` does not decode HTML named entities by default, so
+   run every TOC `title` through the **same named+numeric decode** defined in
+   Component 3 before storing it. Otherwise `Chapter&nbsp;1` reaches the curriculum
+   prompt and the UI undecoded.
 5. **XHTML → text** per linear spine item via `xhtmlToText` (Component 3). Record
-   the synthetic-page index at which each spine **document** begins.
-6. **Synthetic pagination**: concatenate the per-document text in spine order and
-   chunk into `PAGE_CHARS`-sized pages **at paragraph boundaries** (never split a
-   paragraph unless it alone exceeds `PAGE_CHARS`, then hard-split). Result is
-   `pages: string[]`.
+   each spine **document's character offset** in the concatenated stream — *not* a
+   page index, which does not exist until step 6. (Same for any best-effort anchor
+   offsets.)
+6. **Synthetic pagination**: concatenate the per-document text in spine order,
+   **forcing a page break at each linear spine-document boundary** so every chapter
+   starts at a page boundary (see "Document↔page boundary policy" below). Within a
+   document, chunk into `PAGE_CHARS`-sized pages **at paragraph boundaries** (never
+   split a paragraph unless it alone exceeds `PAGE_CHARS`, then hard-split). Skip
+   empty/whitespace-only pages. As a header-independent zip-bomb backstop, hard-cap
+   the total concatenated text length and abort past it. Result: `pages: string[]`.
+   Once page boundaries are fixed, convert the step-5 character offsets → page
+   indices.
 7. **Outline → page mapping** (best-effort, document-granular): for each TOC entry,
-   map its `href` to the target spine document's **start page**. Intra-document
-   anchor refinement is attempted only if cheaply available and **always** falls
-   back to the document start page. Curriculum quality must not depend on
-   sub-document anchor resolution. Drop TOC entries whose target isn't in the
-   linear spine.
+   map its `href` to the target spine document's **start page** (which, given the
+   forced break in step 6, is always exact). Intra-document anchor refinement is
+   attempted only if cheaply available (convert a recorded anchor offset → page) and
+   **always** falls back to the document start page. Curriculum quality must not
+   depend on sub-document anchor resolution. Drop TOC entries whose target isn't in
+   the linear spine.
 8. **Guards**: DRM check (Component 4) before extraction; total text `< MIN_TEXT_CHARS`
    → throw the existing `NO_TEXT:` sentinel.
 
@@ -110,6 +133,20 @@ If a synthetic page is much smaller than a print page, page counts balloon, the
 per-page excerpt block grows, and "4–25 pages" stops corresponding to a sane
 lesson size. ~1800 keeps both heuristics in their tuned regime. Treat the value
 as a documented coupling; if it's ever retuned, re-check those two call sites.
+
+### Document↔page boundary policy
+
+Each linear spine document **forces a page break**: a chapter never shares a page
+with the next. Rationale: the curriculum prompt emits the first `EXCERPT_CHARS`
+(150) of *every* page as orientation (`lib/curriculum.ts:80`). If chapter N's tail
+shared a page with chapter N+1's head, the excerpt for that page would show
+chapter N's tail, mislabeling exactly the chapter-start signal the curriculum
+relies on — and `outline.page` would point mid-page. Forcing the break makes every
+chapter start a page boundary, so `outline.page` is exact and step-5 offset→page
+conversion is trivial for document starts. Cost: short trailing pages (a one-
+paragraph chapter becomes a one-page chapter), so a synthetic page is "≤ `PAGE_CHARS`"
+rather than "≈ `PAGE_CHARS`". This is immaterial to the "4–25 pages per lesson"
+regime and is the accepted trade.
 
 ## Component 3 — `xhtmlToText(xml: string): string` (extraction contract)
 
@@ -203,7 +240,8 @@ EPUB upload
 |---|---|
 | Not `.pdf`/`.epub` | 400 at upload, both client + server |
 | > 80MB | 400 (compressed-size cap, unchanged) |
-| Zip-bomb (decompressed bytes exceed ceiling) | abort extraction → book `status=error` |
+| Zip-bomb — `Σ originalSize` of kept entries exceeds ceiling (`unzipSync` filter, pre-inflation) | reject before inflating → book `status=error` |
+| Zip-bomb — header lies; concatenated text exceeds the step-6 length cap | abort extraction → book `status=error` |
 | `encryption.xml` encrypts a content doc | `EPUB_DRM` → friendly error |
 | Corrupt zip / missing OPF / empty spine | thrown error → book `status=error` |
 | Extracted text `< MIN_TEXT_CHARS` | `NO_TEXT` → friendly error |
@@ -222,8 +260,11 @@ The repo's vitest covers `lib/` pure logic; `extractEpub` and `xhtmlToText` fit.
   extracts successfully (Component 4).
 - **`xhtmlToText` unit tests**: block-boundary spacing, script/style removal,
   numeric + named entity decode.
-- Property assertions: no residual tags, no residual named entities, no zero-length
-  pages, outline page numbers non-decreasing.
+- Property assertions: no residual tags, no residual named entities (titles
+  included), no zero-length pages. **Not** a general invariant: outline page numbers
+  are non-decreasing only when the TOC follows spine order, which EPUB does not
+  require — assert monotonicity on the known Gutenberg fixture only, not as a
+  property of arbitrary input.
 
 ## Dependencies
 
