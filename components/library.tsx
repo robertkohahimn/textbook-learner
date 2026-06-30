@@ -52,6 +52,12 @@ export function Library() {
     <main className="mx-auto w-full max-w-6xl px-6 pb-24">
       <header className="flex items-center justify-between py-8">
         <Wordmark />
+        <Link
+          href="/settings"
+          className="text-sm text-ink-soft hover:text-ink transition-colors"
+        >
+          Settings
+        </Link>
       </header>
 
       <section className="rise mt-6 sm:mt-10">
