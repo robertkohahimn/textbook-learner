@@ -1,5 +1,23 @@
 "use client";
 
+/*
+ * Vendored from componentry.dev's `newsletter-bookshelf` registry entry:
+ *   pnpm dlx shadcn@latest add @componentry/newsletter-bookshelf
+ *
+ * No longer byte-identical to upstream. Local deltas, each marked inline with
+ * a `Local delta:` comment — re-check them when re-pulling:
+ *   1. `roundedRect` falls back to arcTo (Safari 16.0-16.3 throws on roundRect).
+ *   2. `addTexture` repeats one cached noise tile instead of walking every
+ *      pixel of every face (~626k iterations per book, synchronous at mount).
+ *   3. `Book` clears the body cursor on unmount.
+ *   4. The camera resets only when the set of books changes; a resize clamps
+ *      the existing position instead of jumping back to the start.
+ *   5. Wheel panning uses a native non-passive listener (React's onWheel is
+ *      passive, so preventDefault was a no-op).
+ *   6. Added the `onCurrentChange` prop so a parent can mirror which book the
+ *      camera is nearest.
+ */
+
 /* eslint-disable react/no-unknown-property */
 
 import { cn } from "@/lib/utils";
@@ -32,6 +50,12 @@ export interface NewsletterBookshelfProps {
   height?: number | string;
   brand?: string;
   onSelect?: (item: NewsletterBookshelfItem, index: number) => void;
+  /**
+   * Local delta: fires whenever the camera settles nearest a different book,
+   * including on load, on scroll, and after Escape closes a focused cover.
+   * Pass a stable callback — it runs from an effect.
+   */
+  onCurrentChange?: (item: NewsletterBookshelfItem, index: number) => void;
 }
 
 type BookLayout = NewsletterBookshelfItem & {
@@ -180,7 +204,23 @@ function roundedRect(
   radius: number,
 ) {
   context.beginPath();
-  context.roundRect(x, y, width, height, radius);
+  // Local delta: Safari 16.0-16.3 exposes roundRect but can throw on it, so
+  // fall back to an equivalent arcTo path. Reached via motif 2.
+  if (typeof context.roundRect === "function") {
+    try {
+      context.roundRect(x, y, width, height, radius);
+      return;
+    } catch {
+      // Fall through to the manual path.
+    }
+  }
+  const capped = Math.min(radius, width / 2, height / 2);
+  context.moveTo(x + capped, y);
+  context.arcTo(x + width, y, x + width, y + height, capped);
+  context.arcTo(x + width, y + height, x, y + height, capped);
+  context.arcTo(x, y + height, x, y, capped);
+  context.arcTo(x, y, x + width, y, capped);
+  context.closePath();
 }
 
 function drawMotif(
@@ -279,21 +319,55 @@ function drawMotif(
   context.restore();
 }
 
+const NOISE_TILE = 128;
+let noiseTile: HTMLCanvasElement | null = null;
+
+/**
+ * Local delta: one grain tile, built once per page and repeated, replacing a
+ * per-pixel getImageData walk that ran three times per book (~626k iterations
+ * each) synchronously while the shelf mounted.
+ */
+function getNoiseTile() {
+  if (noiseTile) return noiseTile;
+  const canvas = document.createElement("canvas");
+  canvas.width = NOISE_TILE;
+  canvas.height = NOISE_TILE;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  const image = context.createImageData(NOISE_TILE, NOISE_TILE);
+  const random = seeded(0x9e3779b9);
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    const value = random() < 0.5 ? 0 : 255;
+    image.data[offset] = value;
+    image.data[offset + 1] = value;
+    image.data[offset + 2] = value;
+    // Matches the roughly +/-2.5 per-channel jitter of the original walk.
+    image.data[offset + 3] = 8;
+  }
+  context.putImageData(image, 0, 0);
+  noiseTile = canvas;
+  return canvas;
+}
+
 function addTexture(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
   seed: number,
 ) {
-  const image = context.getImageData(0, 0, width, height);
+  const tile = getNoiseTile();
+  if (!tile) return;
+  const pattern = context.createPattern(tile, "repeat");
+  if (!pattern) return;
+  // Offset the tile per face so neighbouring books don't share a grain phase.
   const random = seeded(seed);
-  for (let offset = 0; offset < image.data.length; offset += 4) {
-    const noise = (random() - 0.5) * 5;
-    image.data[offset] = Math.max(0, Math.min(255, image.data[offset]! + noise));
-    image.data[offset + 1] = Math.max(0, Math.min(255, image.data[offset + 1]! + noise));
-    image.data[offset + 2] = Math.max(0, Math.min(255, image.data[offset + 2]! + noise));
-  }
-  context.putImageData(image, 0, 0);
+  const shiftX = Math.floor(random() * NOISE_TILE);
+  const shiftY = Math.floor(random() * NOISE_TILE);
+  context.save();
+  context.translate(-shiftX, -shiftY);
+  context.fillStyle = pattern;
+  context.fillRect(0, 0, width + NOISE_TILE, height + NOISE_TILE);
+  context.restore();
 }
 
 function drawClothWeave(
@@ -595,6 +669,15 @@ function Book({
       geometry.dispose();
     };
   }, [geometry, textures]);
+
+  // Local delta: a book deleted while hovered never fires pointerleave, which
+  // would strand the pointer cursor over the whole page.
+  useEffect(
+    () => () => {
+      document.body.style.cursor = "";
+    },
+    [],
+  );
 
   useEffect(() => {
     const node = group.current;
@@ -900,6 +983,7 @@ export function NewsletterBookshelf({
   height = 620,
   brand = "The Brief",
   onSelect,
+  onCurrentChange,
 }: NewsletterBookshelfProps) {
   const books = useMemo(
     () => deriveLayout(items.length ? items : defaultNewsletterBooks),
@@ -961,11 +1045,35 @@ export function NewsletterBookshelf({
     };
   }, []);
 
+  // Local delta: this used to depend on `books` and `getBounds`, so it snapped
+  // the camera back to the start of the shelf on every resize and on every
+  // change of the `items` prop's identity. Reset only when the shelf's actual
+  // contents change...
+  const shelfKey = books.map((book) => book.id).join("|");
+  const initialised = useRef(false);
   useEffect(() => {
     const bounds = getBounds();
     cameraX.current = bounds.min;
     setCurrentIndex(nearestBook(books, bounds.min));
-  }, [books, getBounds]);
+    initialised.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shelfKey]);
+
+  // ...and on resize just keep the reader where they were, within new bounds.
+  useEffect(() => {
+    if (!initialised.current) return;
+    const bounds = getBounds();
+    cameraX.current = THREE.MathUtils.clamp(cameraX.current, bounds.min, bounds.max);
+    setCurrentIndex(nearestBook(books, cameraX.current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageWidth]);
+
+  // Local delta: report which book the camera is nearest so a parent can keep
+  // its own UI in step with the shelf in every state, not just on click.
+  useEffect(() => {
+    const book = books[currentIndex];
+    if (book) onCurrentChange?.(book, currentIndex);
+  }, [books, currentIndex, onCurrentChange]);
 
   useEffect(
     () => () => {
@@ -1099,6 +1207,22 @@ export function NewsletterBookshelf({
     });
   };
 
+  // Local delta: React attaches `wheel` passively, so the preventDefault in a
+  // JSX onWheel handler was a no-op and the page scrolled during a pan.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (event: WheelEvent) => {
+      if (selectedIndex !== null) return;
+      const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+      if (!horizontal && !event.shiftKey) return;
+      event.preventDefault();
+      moveCamera(cameraX.current + (horizontal ? event.deltaX : event.deltaY) * 0.012);
+    };
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  }, [moveCamera, selectedIndex]);
+
   const selectedBook = selectedIndex === null ? null : books[selectedIndex];
   const hovered = hoveredIndex === null ? null : books[hoveredIndex];
   const bounds = getBounds();
@@ -1127,14 +1251,6 @@ export function NewsletterBookshelf({
         onPointerLeave={() => {
           gesture.current = null;
           setHoveredIndex(null);
-        }}
-        onWheel={(event) => {
-          if (selectedIndex !== null) return;
-          const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-          if (horizontal || event.shiftKey) {
-            event.preventDefault();
-            moveCamera(cameraX.current + (horizontal ? event.deltaX : event.deltaY) * 0.012);
-          }
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape" && selectedIndex !== null) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { BookListRow } from "@/lib/db";
@@ -25,10 +25,16 @@ const ACCENT_HEX = [
   "#5d3b5e",
 ];
 
-/** three.js is ~170KB gzipped and needs a real WebGL context, so keep it off the server. */
+/** three.js is ~249KB gzipped and needs a real WebGL context, so keep it off the server. */
 const NewsletterBookshelf = dynamic(
   () => import("./newsletter-bookshelf").then((m) => m.NewsletterBookshelf),
-  { ssr: false, loading: () => <ShelfFrame /> }
+  {
+    ssr: false,
+    // Renders inside ShelfFrame, so this is a bare spacer — a second
+    // ShelfFrame here would draw a border inside a border. The heights track
+    // `useShelfHeight`, whose breakpoint is Tailwind's `sm`.
+    loading: () => <div className="h-[400px] sm:h-[560px]" />,
+  }
 );
 
 export function Library() {
@@ -67,6 +73,14 @@ export function Library() {
     [coverKey]
   );
 
+  // The shelf reports whichever book the camera is nearest — on load, while
+  // panning, and after Escape closes a cover — so the panel below never
+  // describes a different book than the one in view. `books[0]` covers only
+  // the frame before the shelf's first callback, where the camera starts.
+  const trackCurrent = useCallback(
+    (item: NewsletterBookshelfItem) => setSelectedId(item.id),
+    []
+  );
   const selected =
     books?.find((b) => b.id === selectedId) ?? books?.[0] ?? null;
 
@@ -89,7 +103,18 @@ export function Library() {
 
   async function remove(book: BookListRow) {
     if (!confirm(`Remove “${book.title}” and all its study materials?`)) return;
-    await fetch(`/api/books/${book.id}`, { method: "DELETE" });
+    setUploadError(null);
+    try {
+      const res = await fetch(`/api/books/${book.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setUploadError(body.error ?? `Couldn’t remove “${book.title}”.`);
+        return;
+      }
+    } catch {
+      setUploadError("Couldn’t reach Folio — check your connection.");
+      return;
+    }
     if (selectedId === book.id) setSelectedId(null);
     void refresh();
   }
@@ -144,19 +169,19 @@ export function Library() {
       )}
 
       {books === undefined || webgl === null ? (
-        <ShelfFrame />
+        <ShelfFrame height={shelfHeight} />
       ) : books.length === 0 ? (
         <EmptyShelf onBrowse={() => inputRef.current?.click()} />
       ) : webgl === false ? (
         <BookGrid books={books} onRemove={remove} />
       ) : (
         <>
-          <ShelfFrame>
+          <ShelfFrame height={shelfHeight}>
             <NewsletterBookshelf
               items={items}
               brand="Folio"
               height={shelfHeight}
-              onSelect={(item) => setSelectedId(item.id)}
+              onCurrentChange={trackCurrent}
               className="bg-transparent"
             />
           </ShelfFrame>
@@ -192,10 +217,19 @@ export function Library() {
 }
 
 /** Paper-toned surround so the WebGL stage sits in the page rather than on it. */
-function ShelfFrame({ children }: { children?: React.ReactNode }) {
+function ShelfFrame({
+  children,
+  height,
+}: {
+  children?: React.ReactNode;
+  height: number;
+}) {
   return (
     <div className="rise overflow-hidden rounded-xl border border-line bg-paper-deep">
-      {children ?? <div className="h-[clamp(400px,52vh,560px)]" />}
+      {/* Same height as the mounted shelf, so nothing below it shifts. */}
+      {children ?? (
+        <div aria-busy="true" aria-label="Loading your shelf" style={{ height }} />
+      )}
     </div>
   );
 }
@@ -286,7 +320,6 @@ function BookDetail({
 
   return (
     <section
-      aria-live="polite"
       className={`fade mt-8 flex flex-wrap items-end justify-between gap-x-8 gap-y-5 accent-${book.accent}`}
     >
       <div className="min-w-0 flex-1">
@@ -297,25 +330,29 @@ function BookDetail({
           <p className="mt-1 text-sm text-ink-soft">{book.author}</p>
         )}
 
-        {processing ? (
-          <div className="mt-4">
-            <WorkingDot label={STAGE_LABELS[book.stage ?? ""] ?? "Getting started…"} />
-          </div>
-        ) : failed ? (
-          <p role="alert" className="mt-4 text-sm text-bad">
-            {book.error ?? "Couldn’t process this book."}
-          </p>
-        ) : (
-          <div className="mt-4 max-w-sm">
-            <p className="flex items-baseline justify-between font-mono text-xs text-ink-soft">
-              <span>
-                {book.completed_lessons}/{book.total_lessons} lessons
-              </span>
-              <span>{Math.round(progress * 100)}%</span>
+        {/* Only the status announces. Wrapping the whole panel meant the 2s
+            poll re-read the title, author, and every control label. */}
+        <div aria-live="polite">
+          {processing ? (
+            <div className="mt-4">
+              <WorkingDot label={STAGE_LABELS[book.stage ?? ""] ?? "Getting started…"} />
+            </div>
+          ) : failed ? (
+            <p role="alert" className="mt-4 text-sm text-bad">
+              {book.error ?? "Couldn’t process this book."}
             </p>
-            <ProgressBar value={progress} className="mt-2" />
-          </div>
-        )}
+          ) : (
+            <div className="mt-4 max-w-sm">
+              <p className="flex items-baseline justify-between font-mono text-xs text-ink-soft">
+                <span>
+                  {book.completed_lessons}/{book.total_lessons} lessons
+                </span>
+                <span>{Math.round(progress * 100)}%</span>
+              </p>
+              <ProgressBar value={progress} className="mt-2" />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-5">
@@ -492,7 +529,9 @@ function useShelfHeight() {
   const [height, setHeight] = useState(560);
 
   useEffect(() => {
-    const compact = window.matchMedia("(max-width: 640px)");
+    // Tailwind's `sm` starts at 640px, so stop just below it — otherwise the
+    // shelf and the loading spacer disagree at exactly 640px wide.
+    const compact = window.matchMedia("(max-width: 639.98px)");
     const update = () => setHeight(compact.matches ? 400 : 560);
     update();
     compact.addEventListener("change", update);
@@ -502,10 +541,23 @@ function useShelfHeight() {
   return height;
 }
 
-/** The mono line printed across the top of each generated cover. */
+/**
+ * The mono line printed across the top of each generated cover. `coverTexture`
+ * draws it with a single fillText that doesn't wrap, so it has to stay short —
+ * book metadata routinely carries half a dozen authors.
+ */
+const COVER_LINE_MAX = 28;
+
 function coverLine(book: BookListRow) {
-  if (book.author) return book.author.toUpperCase();
-  // SQLite hands back `datetime('now')` as "YYYY-MM-DD HH:MM:SS" in UTC.
+  if (book.author) {
+    const author = book.author.toUpperCase();
+    return author.length > COVER_LINE_MAX
+      ? `${author.slice(0, COVER_LINE_MAX - 1).trimEnd()}…`
+      : author;
+  }
+  // SQLite hands back `datetime('now')` as "YYYY-MM-DD HH:MM:SS" in UTC, so
+  // format in UTC too — otherwise a book added at 02:00Z dates a day early for
+  // readers west of it.
   const added = new Date(`${book.created_at.replace(" ", "T")}Z`);
   return Number.isNaN(added.valueOf())
     ? "ADDED TO FOLIO"
@@ -514,6 +566,7 @@ function coverLine(book: BookListRow) {
           month: "short",
           day: "numeric",
           year: "numeric",
+          timeZone: "UTC",
         })
         .toUpperCase();
 }
