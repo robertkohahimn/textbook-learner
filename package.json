@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",
+    "@react-three/fiber": "^9.7.0",
     "better-sqlite3": "^12.10.0",
+    "clsx": "^2.1.1",
     "fast-xml-parser": "^5.9.3",
     "fflate": "^0.8.3",
     "katex": "^0.17.0",
@@ -21,6 +23,8 @@
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
+    "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1",
     "unpdf": "^1.6.2"
   },
   "devDependencies": {
@@ -30,6 +34,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.185.4",
     "playwright": "^1.60.0",
     "tailwindcss": "^4",
     "typescript": "^5",
