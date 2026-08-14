@@ -15,14 +15,26 @@ const STAGE_LABELS: Record<string, string> = {
   curriculum: "Assembling your curriculum…",
 };
 
-/** Book-cloth accents, keyed by `books.accent`. Keep in sync with `.accent-N` in globals.css. */
+/**
+ * Book-cloth accents, keyed by `books.accent`. The canvas can't read CSS
+ * classes, so these mirror `.accent-N` in globals.css — and `accentFor()` in
+ * lib/db.ts mods by this length. Keep all three in step.
+ */
 const ACCENT_HEX = [
-  "#7c2f2f",
-  "#2f5d3e",
-  "#36436e",
-  "#8a5a14",
-  "#2c5f5d",
-  "#5d3b5e",
+  "#7c2f2f", // oxblood
+  "#2f5d3e", // forest
+  "#36436e", // navy
+  "#8a5a14", // ochre
+  "#2c5f5d", // teal
+  "#5d3b5e", // plum
+  "#7a2f4a", // wine
+  "#6b4a2f", // chestnut
+  "#55672e", // olive
+  "#24455c", // slate
+  "#9c5a22", // amber
+  "#453f75", // indigo
+  "#8a3a20", // brick
+  "#4a6076", // steel
 ];
 
 /** three.js is ~249KB gzipped and needs a real WebGL context, so keep it off the server. */
@@ -73,10 +85,12 @@ export function Library() {
     [coverKey]
   );
 
-  // The shelf reports whichever book the camera is nearest — on load, while
-  // panning, and after Escape closes a cover — so the panel below never
-  // describes a different book than the one in view. `books[0]` covers only
-  // the frame before the shelf's first callback, where the camera starts.
+  // Wired to both shelf callbacks, because neither covers the other:
+  // onCurrentChange follows the camera while panning, but the camera clamps to
+  // [bounds.min, bounds.max], so books past either end can be clicked and
+  // focused without ever becoming the nearest book. onSelect carries the
+  // clicked index regardless. `books[0]` covers only the frame before the
+  // shelf's first callback.
   const trackCurrent = useCallback(
     (item: NewsletterBookshelfItem) => setSelectedId(item.id),
     []
@@ -181,6 +195,7 @@ export function Library() {
               items={items}
               brand="Folio"
               height={shelfHeight}
+              onSelect={trackCurrent}
               onCurrentChange={trackCurrent}
               className="bg-transparent"
             />

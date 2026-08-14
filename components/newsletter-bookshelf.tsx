@@ -1068,12 +1068,15 @@ export function NewsletterBookshelf({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageWidth]);
 
-  // Local delta: report which book the camera is nearest so a parent can keep
-  // its own UI in step with the shelf in every state, not just on click.
+  // Local delta: report which book is in view so a parent can keep its own UI
+  // in step with the shelf in every state, not just on click. A focused cover
+  // wins over the camera: moveCamera clamps to [bounds.min, bounds.max], so
+  // books past either end stay clickable while never becoming the nearest.
+  const inViewIndex = selectedIndex ?? currentIndex;
   useEffect(() => {
-    const book = books[currentIndex];
-    if (book) onCurrentChange?.(book, currentIndex);
-  }, [books, currentIndex, onCurrentChange]);
+    const book = books[inViewIndex];
+    if (book) onCurrentChange?.(book, inViewIndex);
+  }, [books, inViewIndex, onCurrentChange]);
 
   useEffect(
     () => () => {
@@ -1144,10 +1147,15 @@ export function NewsletterBookshelf({
   );
 
   const close = useCallback(() => {
+    // Local delta: the closed book stays the current one. The camera clamps to
+    // [bounds.min, bounds.max], so for books past either end it can't sit
+    // nearest them, and without this closing a cover would hand attention to
+    // an unrelated neighbour.
+    if (selectedIndex !== null) setCurrentIndex(selectedIndex);
     setSelectedIndex(null);
     orbit.current = { yaw: 0, pitch: 0 };
     stageRef.current?.focus({ preventScroll: true });
-  }, []);
+  }, [selectedIndex]);
 
   const switchFocused = useCallback(
     (direction: number) => {

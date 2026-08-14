@@ -202,10 +202,18 @@ export function newId(): string {
   return randomUUID();
 }
 
+/**
+ * Book-cloth accent index. Must stay within the `.accent-N` classes defined in
+ * app/globals.css, mirrored as hex in ACCENT_HEX (components/library.tsx).
+ * Widening this only affects books inserted afterwards; existing rows keep the
+ * index they were stored with.
+ */
+const ACCENT_COUNT = 14;
+
 function accentFor(id: string): number {
   let hash = 0;
   for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  return hash % 6;
+  return hash % ACCENT_COUNT;
 }
 
 // --- books ---
@@ -224,7 +232,7 @@ export function insertBook(book: {
 }
 
 export function listBooks(): BookListRow[] {
-  return getDb()
+  const rows = getDb()
     .prepare(
       `SELECT b.*,
         (SELECT COUNT(*) FROM lessons l WHERE l.book_id = b.id) AS total_lessons,
@@ -232,12 +240,23 @@ export function listBooks(): BookListRow[] {
        FROM books b ORDER BY b.created_at DESC`
     )
     .all() as BookListRow[];
+  return rows.map(withAccent);
 }
 
 export function getBook(id: string): BookRow | undefined {
-  return getDb().prepare(`SELECT * FROM books WHERE id = ?`).get(id) as
+  const row = getDb().prepare(`SELECT * FROM books WHERE id = ?`).get(id) as
     | BookRow
     | undefined;
+  return row && withAccent(row);
+}
+
+/**
+ * Derive the accent rather than trusting the stored column, so books inserted
+ * before the palette widened pick up the fuller range too. accentFor is
+ * deterministic from the id, so rows written since are unaffected.
+ */
+function withAccent<T extends BookRow>(row: T): T {
+  return { ...row, accent: accentFor(row.id) };
 }
 
 export function updateBook(

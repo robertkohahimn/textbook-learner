@@ -33,13 +33,24 @@
   --font-mono: var(--font-spline-mono);
 }
 
-/* Book-cloth accents, seeded per book. */
-.accent-0 { --accent: #7c2f2f; }
-.accent-1 { --accent: #2f5d3e; }
-.accent-2 { --accent: #36436e; }
-.accent-3 { --accent: #8a5a14; }
-.accent-4 { --accent: #2c5f5d; }
-.accent-5 { --accent: #5d3b5e; }
+/* Book-cloth accents, seeded per book by accentFor() in lib/db.ts.
+   Mirrored as hex in ACCENT_HEX (components/library.tsx) for the WebGL shelf,
+   which can't read CSS classes. Keep all three in step. 0-5 are the original
+   six and must not move — existing rows already store those indices. */
+.accent-0 { --accent: #7c2f2f; } /* oxblood */
+.accent-1 { --accent: #2f5d3e; } /* forest */
+.accent-2 { --accent: #36436e; } /* navy */
+.accent-3 { --accent: #8a5a14; } /* ochre */
+.accent-4 { --accent: #2c5f5d; } /* teal */
+.accent-5 { --accent: #5d3b5e; } /* plum */
+.accent-6 { --accent: #7a2f4a; } /* wine */
+.accent-7 { --accent: #6b4a2f; } /* chestnut */
+.accent-8 { --accent: #55672e; } /* olive */
+.accent-9 { --accent: #24455c; } /* slate */
+.accent-10 { --accent: #9c5a22; } /* amber */
+.accent-11 { --accent: #453f75; } /* indigo */
+.accent-12 { --accent: #8a3a20; } /* brick */
+.accent-13 { --accent: #4a6076; } /* steel */
 
 html {
   background: var(--paper);
